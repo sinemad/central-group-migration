@@ -1,0 +1,46 @@
+# ── Python ────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+
+# ── Virtual environments ──────────────────────────────────────────────────────
+.venv/
+venv/
+env/
+ENV/
+.python-version
+
+# ── Exported group data ───────────────────────────────────────────────────────
+# The exports/ directory is runtime data — never commit real Central configs.
+# The .gitkeep file inside tracks the empty directory structure.
+exports/*
+!exports/.gitkeep
+
+# ── Credentials ───────────────────────────────────────────────────────────────
+# Never commit tokens, passwords or cluster URLs.
+.env
+*.env
+central_info.yaml
+central_info.yml
+token.json
+token.yaml
+temp/
+
+# ── Docker ────────────────────────────────────────────────────────────────────
+# Compose override files are local only
+docker-compose.override.yml
+
+# ── Editor / OS ───────────────────────────────────────────────────────────────
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+Thumbs.db

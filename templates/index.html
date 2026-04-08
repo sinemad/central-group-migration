@@ -1,0 +1,1088 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Central Group Migration</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:        #0d1117;
+    --surface:   #161b22;
+    --surface2:  #1c2128;
+    --border:    #2d3642;
+    --amber:     #f0a500;
+    --amber-dim: #7a5200;
+    --green:     #3fb950;
+    --red:       #f85149;
+    --blue:      #58a6ff;
+    --purple:    #bc8cff;
+    --muted:     #6e7681;
+    --text:      #c9d1d9;
+    --text-hi:   #f0f6fc;
+    --mono:      'IBM Plex Mono', monospace;
+    --sans:      'IBM Plex Sans', sans-serif;
+    --radius:    4px;
+    --transition: 180ms ease;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg); color: var(--text); font-family: var(--sans);
+    font-size: 14px; line-height: 1.6; min-height: 100vh;
+    display: grid; grid-template-rows: auto 1fr auto;
+  }
+  header {
+    border-bottom: 1px solid var(--border); padding: 0 32px; height: 56px;
+    display: flex; align-items: center; gap: 16px; background: var(--surface);
+  }
+  .logo { font-family: var(--mono); font-size: 13px; font-weight: 600; color: var(--amber); letter-spacing: 0.08em; text-transform: uppercase; }
+  .logo span { color: var(--muted); font-weight: 400; }
+  .header-badge { font-family: var(--mono); font-size: 10px; padding: 2px 8px; border: 1px solid var(--amber-dim); color: var(--amber); border-radius: 2px; text-transform: uppercase; letter-spacing: 0.1em; }
+  main { display: grid; grid-template-columns: 280px 1fr; max-height: calc(100vh - 56px - 36px); overflow: hidden; }
+  aside { border-right: 1px solid var(--border); background: var(--surface); overflow-y: auto; display: flex; flex-direction: column; }
+  .sidebar-section { padding: 20px; border-bottom: 1px solid var(--border); }
+  .sidebar-label { font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--muted); margin-bottom: 14px; }
+  .tabs { display: flex; border-bottom: 1px solid var(--border); }
+  .tab { flex: 1; padding: 14px 0; font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; text-align: center; cursor: pointer; color: var(--muted); border-bottom: 2px solid transparent; transition: color var(--transition), border-color var(--transition); background: none; border-top: none; border-left: none; border-right: none; }
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--amber); border-bottom-color: var(--amber); }
+  .field { margin-bottom: 12px; }
+  label { display: block; font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); margin-bottom: 5px; }
+  input[type="text"], input[type="password"], input[type="url"] { width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text-hi); font-family: var(--mono); font-size: 12px; padding: 7px 10px; outline: none; transition: border-color var(--transition); }
+  input:focus { border-color: var(--amber); }
+  input::placeholder { color: var(--muted); }
+  .btn { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; padding: 7px 14px; border-radius: var(--radius); border: 1px solid; cursor: pointer; transition: all var(--transition); white-space: nowrap; }
+  .btn:disabled { opacity: 0.35; cursor: not-allowed; }
+  .btn-primary { background: var(--amber); border-color: var(--amber); color: #000; font-weight: 600; }
+  .btn-primary:not(:disabled):hover { background: #ffc107; border-color: #ffc107; }
+  .btn-outline { background: transparent; border-color: var(--border); color: var(--text); }
+  .btn-outline:not(:disabled):hover { border-color: var(--amber); color: var(--amber); }
+  .btn-sm { padding: 4px 10px; font-size: 10px; }
+  .btn-block { width: 100%; justify-content: center; }
+  .group-list { flex: 1; overflow-y: auto; }
+  .group-item { display: flex; align-items: center; gap: 10px; padding: 9px 20px; cursor: pointer; transition: background var(--transition); }
+  .group-item:hover { background: var(--surface2); }
+  .group-item.selected { background: rgba(240,165,0,0.08); }
+  .group-item.active-browse { background: rgba(88,166,255,0.1); border-left: 2px solid var(--blue); padding-left: 18px; }
+  .group-checkbox { width: 14px; height: 14px; accent-color: var(--amber); flex-shrink: 0; }
+  .group-name { font-family: var(--mono); font-size: 12px; color: var(--text-hi); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .type-badge { font-family: var(--mono); font-size: 9px; padding: 1px 5px; border-radius: 2px; text-transform: uppercase; letter-spacing: 0.06em; flex-shrink: 0; }
+  .type-iap   { background: rgba(88,166,255,0.15); color: var(--blue);  border: 1px solid rgba(88,166,255,0.3); }
+  .type-sw    { background: rgba(63,185,80,0.12);  color: var(--green); border: 1px solid rgba(63,185,80,0.25); }
+  .type-mixed { background: rgba(240,165,0,0.1);   color: var(--amber); border: 1px solid rgba(240,165,0,0.25); }
+  .select-bar { display: flex; gap: 8px; padding: 10px 20px; border-bottom: 1px solid var(--border); align-items: center; }
+  .select-count { font-family: var(--mono); font-size: 10px; color: var(--muted); flex: 1; }
+  .search-bar { padding: 10px 16px; border-bottom: 1px solid var(--border); }
+  .search-bar input { width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text-hi); font-family: var(--mono); font-size: 12px; padding: 6px 10px; outline: none; transition: border-color var(--transition); }
+  .search-bar input:focus { border-color: var(--blue); }
+  .browse-hint { font-family: var(--mono); font-size: 10px; color: var(--muted); padding: 8px 20px; border-bottom: 1px solid var(--border); text-align: center; display: none; }
+  .content { display: flex; flex-direction: column; overflow: hidden; }
+  .panel { display: none; flex-direction: column; flex: 1; overflow: hidden; }
+  .panel.active { display: flex; }
+  .panel-header { padding: 20px 28px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px; }
+  .panel-title { font-family: var(--mono); font-size: 13px; font-weight: 600; color: var(--text-hi); flex: 1; }
+  .panel-body { flex: 1; overflow-y: auto; padding: 24px 28px; }
+  .summary-row { display: grid; grid-template-columns: repeat(4,1fr); gap: 12px; margin-bottom: 24px; }
+  .summary-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; }
+  .summary-num { font-family: var(--mono); font-size: 26px; font-weight: 600; color: var(--text-hi); line-height: 1; }
+  .summary-label { font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); margin-top: 4px; }
+  .group-detail { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; animation: fadeIn 150ms ease; }
+  .group-detail-header { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px; background: var(--surface2); }
+  .group-detail-name { font-family: var(--mono); font-size: 14px; font-weight: 600; color: var(--text-hi); flex: 1; }
+  .prop-grid { display: grid; grid-template-columns: 200px 1fr; }
+  .prop-row { display: contents; }
+  .prop-row:hover .prop-key,
+  .prop-row:hover .prop-val { background: var(--surface2); }
+  .prop-key { font-family: var(--mono); font-size: 11px; color: var(--muted); padding: 9px 20px; border-bottom: 1px solid var(--border); border-right: 1px solid var(--border); }
+  .prop-val { font-family: var(--mono); font-size: 11px; color: var(--text-hi); padding: 9px 20px; border-bottom: 1px solid var(--border); }
+  .prop-row:last-child .prop-key,
+  .prop-row:last-child .prop-val { border-bottom: none; }
+  .prop-bool-true  { color: var(--green); }
+  .prop-bool-false { color: var(--muted); }
+  .cli-section { border-top: 1px solid var(--border); }
+  .cli-header { padding: 10px 20px; font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); background: var(--surface2); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+  .cli-block { font-family: var(--mono); font-size: 11.5px; line-height: 1.65; padding: 16px 20px; color: var(--text); white-space: pre; overflow-x: auto; max-height: 420px; overflow-y: auto; background: var(--bg); tab-size: 4; }
+  .cli-kw      { color: var(--blue); }
+  .cli-val     { color: var(--green); }
+  .cli-str     { color: #a5d6ff; }
+  .cli-num     { color: var(--purple); }
+  .cli-comment { color: var(--muted); font-style: italic; }
+  .cli-key     { color: var(--amber); }
+  .file-pills  { display: flex; gap: 6px; flex-wrap: wrap; }
+  .file-pill   { font-family: var(--mono); font-size: 9px; padding: 2px 7px; border-radius: 2px; background: var(--surface); border: 1px solid var(--border); color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+  .file-pill.present { color: var(--green); border-color: rgba(63,185,80,0.3); background: rgba(63,185,80,0.08); }
+  .btn-copy { position: relative; }
+  .copy-flash { position: absolute; right: 100%; top: 50%; transform: translateY(-50%); margin-right: 8px; font-family: var(--mono); font-size: 10px; color: var(--green); opacity: 0; transition: opacity 400ms; pointer-events: none; white-space: nowrap; }
+  .copy-flash.show { opacity: 1; }
+
+  /* ── WLAN table ── */
+  .wlan-table { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 11px; }
+  .wlan-table th { text-align: left; padding: 7px 16px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); border-bottom: 1px solid var(--border); background: var(--surface2); }
+  .wlan-table td { padding: 8px 16px; border-bottom: 1px solid var(--border); color: var(--text); vertical-align: middle; }
+  .wlan-table tr:last-child td { border-bottom: none; }
+  .wlan-table tr:hover td { background: var(--surface2); }
+  .wlan-badge { display: inline-block; font-size: 9px; padding: 1px 6px; border-radius: 2px; text-transform: uppercase; letter-spacing: 0.06em; }
+  .wlan-open     { background: rgba(63,185,80,0.1);  color: var(--green); border: 1px solid rgba(63,185,80,0.3); }
+  .wlan-wpa2     { background: rgba(88,166,255,0.1); color: var(--blue);  border: 1px solid rgba(88,166,255,0.3); }
+  .wlan-wpa3     { background: rgba(188,140,255,0.1);color: var(--purple);border: 1px solid rgba(188,140,255,0.3); }
+  .wlan-other    { background: rgba(110,118,129,0.1);color: var(--muted); border: 1px solid var(--border); }
+  .detail-section { border-top: 1px solid var(--border); }
+  .detail-section-header { padding: 10px 20px; font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); background: var(--surface2); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+  .count-chip { font-family: var(--mono); font-size: 10px; padding: 1px 8px; border-radius: 10px; background: var(--surface); border: 1px solid var(--border); color: var(--text); }
+
+  /* ── Rename ── */
+  .rename-badge {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-family: var(--mono); font-size: 10px;
+    padding: 2px 8px; border-radius: 2px;
+    background: rgba(240,165,0,0.1); border: 1px solid rgba(240,165,0,0.3);
+    color: var(--amber);
+  }
+  .rename-badge .arr { opacity: 0.6; }
+  .rename-editor {
+    display: none; align-items: center; gap: 8px; flex: 1;
+  }
+  .rename-editor.active { display: flex; }
+  .rename-input {
+    flex: 1; background: var(--bg); border: 1px solid var(--amber);
+    border-radius: var(--radius); color: var(--text-hi);
+    font-family: var(--mono); font-size: 13px; font-weight: 600;
+    padding: 4px 8px; outline: none; min-width: 0;
+  }
+  .rename-input::placeholder { color: var(--muted); font-weight: 400; }
+  .rename-actions { display: flex; gap: 6px; flex-shrink: 0; }
+  .group-name-display { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
+  /* rename indicator in sidebar group list */
+  .rename-arrow {
+    font-family: var(--mono); font-size: 9px; color: var(--amber);
+    flex-shrink: 0; opacity: 0.85;
+  }
+  .log-terminal { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); font-family: var(--mono); font-size: 12px; line-height: 1.7; padding: 14px 16px; min-height: 200px; max-height: 340px; overflow-y: auto; }
+  .log-line { display: flex; gap: 12px; }
+  .log-ts   { color: var(--muted); flex-shrink: 0; }
+  .log-msg  { color: var(--text); }
+  .log-ok   .log-msg { color: var(--green); }
+  .log-warn .log-msg { color: var(--amber); }
+  .log-err  .log-msg { color: var(--red); }
+  .log-info .log-msg { color: var(--blue); }
+  .progress-section { margin-bottom: 24px; }
+  .progress-label { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 11px; color: var(--muted); margin-bottom: 6px; }
+  .progress-bar  { height: 3px; background: var(--border); border-radius: 2px; overflow: hidden; }
+  .progress-fill { height: 100%; background: var(--amber); border-radius: 2px; transition: width 300ms ease; width: 0%; }
+  .results-grid { display: grid; gap: 8px; }
+  .result-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 16px; display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 12px; animation: fadeIn 200ms ease; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:none; } }
+  .result-card.ok   { border-left: 3px solid var(--green); }
+  .result-card.warn { border-left: 3px solid var(--amber); }
+  .result-card.fail { border-left: 3px solid var(--red);   }
+  .result-card.skip { border-left: 3px solid var(--muted); }
+  .result-name  { font-family: var(--mono); font-size: 12px; color: var(--text-hi); font-weight: 500; }
+  .result-files { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 5px; }
+  .result-file  { font-family: var(--mono); font-size: 10px; padding: 1px 6px; border-radius: 2px; background: var(--surface2); border: 1px solid var(--border); color: var(--muted); }
+  .result-file.ok   { color: var(--green); border-color: rgba(63,185,80,0.3);  background: rgba(63,185,80,0.08); }
+  .result-file.warn { color: var(--amber); border-color: rgba(240,165,0,0.3);  background: rgba(240,165,0,0.08); }
+  .result-status { font-family: var(--mono); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; }
+  .result-status.ok   { color: var(--green); }
+  .result-status.warn { color: var(--amber); }
+  .result-status.fail { color: var(--red);   }
+  .result-status.skip { color: var(--muted); }
+  .step-list { display: flex; gap: 10px; margin-top: 5px; flex-wrap: wrap; }
+  .step { font-family: var(--mono); font-size: 10px; display: flex; align-items: center; gap: 4px; }
+  .step-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+  .step-dot.ok   { background: var(--green); }
+  .step-dot.fail { background: var(--red);   }
+  .manifest-meta { display: grid; grid-template-columns: auto 1fr; gap: 4px 16px; font-family: var(--mono); font-size: 12px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; margin-bottom: 20px; }
+  .manifest-key { color: var(--muted); }
+  .manifest-val { color: var(--text-hi); }
+  .stats { display: grid; grid-template-columns: repeat(3,1fr); gap: 12px; margin-bottom: 20px; }
+  .stat { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; text-align: center; }
+  .stat-num   { font-family: var(--mono); font-size: 28px; font-weight: 600; line-height: 1; color: var(--text-hi); }
+  .stat-label { font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); margin-top: 4px; }
+  .stat.ok   .stat-num { color: var(--green); }
+  .stat.warn .stat-num { color: var(--amber); }
+  .stat.fail .stat-num { color: var(--red);   }
+  .section-heading { font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--muted); margin-bottom: 12px; margin-top: 24px; display: flex; align-items: center; gap: 10px; }
+  .section-heading::after { content:''; flex:1; height:1px; background: var(--border); }
+  .section-heading:first-child { margin-top: 0; }
+  .empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 48px 24px; color: var(--muted); font-family: var(--mono); font-size: 12px; text-align: center; }
+  .empty-icon { font-size: 32px; opacity: 0.4; }
+  .status-bar { display: flex; align-items: center; gap: 16px; padding: 0 28px; height: 36px; background: var(--surface); border-top: 1px solid var(--border); font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); flex-shrink: 0; transition: background var(--transition); }
+  .status-dot.connected { background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .status-dot.busy      { background: var(--amber); animation: pulse 1s infinite; }
+  .status-dot.error     { background: var(--red); }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+  .hidden { display: none !important; }
+  .mt8  { margin-top: 8px; }
+  .mt16 { margin-top: 16px; }
+
+  /* ── Field helper text ── */
+  .field-hint {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    margin-top: 4px;
+    line-height: 1.5;
+  }
+
+  /* ── Error banner ── */
+  .error-banner {
+    display: none;
+    margin-top: 12px;
+    padding: 10px 12px;
+    border-radius: var(--radius);
+    background: rgba(248,81,73,0.08);
+    border: 1px solid rgba(248,81,73,0.35);
+    font-family: var(--mono);
+    font-size: 11px;
+    color: #ff9492;
+    line-height: 1.55;
+  }
+  .error-banner.visible { display: block; }
+  .error-banner strong {
+    display: block;
+    color: var(--red);
+    font-size: 11px;
+    margin-bottom: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  /* ── Session indicator ── */
+  .session-bar {
+    display: none;
+    align-items: center;
+    gap: 7px;
+    margin-top: 10px;
+    padding: 6px 10px;
+    border-radius: var(--radius);
+    background: rgba(63,185,80,0.08);
+    border: 1px solid rgba(63,185,80,0.25);
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--green);
+  }
+  .session-bar.visible { display: flex; }
+  .session-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--green); flex-shrink: 0;
+    animation: pulse 2s infinite;
+  }
+  .session-bar span { flex: 1; }
+  .session-clear {
+    background: none; border: none; cursor: pointer;
+    color: var(--muted); font-family: var(--mono);
+    font-size: 10px; padding: 0; line-height: 1;
+    transition: color var(--transition);
+  }
+  .session-clear:hover { color: var(--red); }
+
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">HPE Aruba <span>/</span> Central</div>
+  <div class="header-badge">Group Migration</div>
+</header>
+
+<main>
+  <aside>
+    <div class="tabs">
+      <button class="tab active" onclick="switchTab('export')">Export</button>
+      <button class="tab"        onclick="switchTab('import')">Import</button>
+      <button class="tab"        onclick="switchTab('data')">Data</button>
+    </div>
+
+    <!-- Export sidebar -->
+    <div id="sidebar-export">
+      <div class="sidebar-section">
+        <div class="sidebar-label">Source Cluster</div>
+        <div class="field">
+          <label>Base URL</label>
+          <input id="exp-url" type="url" placeholder="https://apigw-prod2.central..."
+                 oninput="saveSession('exp')" />
+        </div>
+        <div class="field">
+          <label>Access Token</label>
+          <input id="exp-token" type="password" placeholder="Bearer token"
+                 oninput="saveSession('exp')" />
+          <div class="field-hint">Tokens expire after 2 hours. Generate from:<br>
+            Maintain → Organization → Platform Integration → API Gateway</div>
+        </div>
+        <button class="btn btn-outline btn-block mt8" onclick="connectExport()">⟳ Connect &amp; Load Groups</button>
+        <div class="error-banner" id="exp-error-banner"></div>
+        <div class="session-bar" id="exp-session-bar">
+          <div class="session-dot"></div>
+          <span>Credentials saved for this session</span>
+          <button class="session-clear" onclick="clearSession('exp')" title="Clear saved credentials">✕</button>
+        </div>
+      </div>
+      <div class="select-bar hidden" id="exp-select-bar">
+        <span class="select-count" id="exp-select-count">0 selected</span>
+        <button class="btn btn-outline btn-sm" onclick="selectAll(true)">All</button>
+        <button class="btn btn-outline btn-sm" onclick="selectAll(false)">None</button>
+      </div>
+      <div class="group-list" id="exp-group-list">
+        <div class="empty"><div class="empty-icon">⬡</div>Connect to load groups</div>
+      </div>
+      <div class="sidebar-section" id="exp-run-section" style="display:none">
+        <button class="btn btn-primary btn-block" onclick="runExport()">↓ Export Selected</button>
+      </div>
+    </div>
+
+    <!-- Import sidebar -->
+    <div id="sidebar-import" style="display:none">
+      <div class="sidebar-section">
+        <div class="sidebar-label">Target Cluster</div>
+        <div class="field">
+          <label>Base URL</label>
+          <input id="imp-url" type="url" placeholder="https://apigw-prod2.central..."
+                 oninput="saveSession('imp')" />
+        </div>
+        <div class="field">
+          <label>Access Token</label>
+          <input id="imp-token" type="password" placeholder="Bearer token"
+                 oninput="saveSession('imp')" />
+          <div class="field-hint">Target cluster token. Must have Admin role for import.</div>
+        </div>
+        <button class="btn btn-outline btn-block mt8" onclick="loadManifest()">⬡ Load Export from Disk</button>
+        <div class="error-banner" id="imp-error-banner"></div>
+        <div class="session-bar" id="imp-session-bar">
+          <div class="session-dot"></div>
+          <span>Credentials saved for this session</span>
+          <button class="session-clear" onclick="clearSession('imp')" title="Clear saved credentials">✕</button>
+        </div>
+      </div>
+      <div class="select-bar hidden" id="imp-select-bar">
+        <span class="select-count" id="imp-select-count">0 selected</span>
+        <button class="btn btn-outline btn-sm" onclick="selectAllImp(true)">All</button>
+        <button class="btn btn-outline btn-sm" onclick="selectAllImp(false)">None</button>
+      </div>
+      <div class="group-list" id="imp-group-list">
+        <div class="empty"><div class="empty-icon">⬡</div>Load an export to preview groups</div>
+      </div>
+      <div class="sidebar-section" id="imp-run-section" style="display:none">
+        <button class="btn btn-primary btn-block" onclick="runImport()">↑ Import Selected</button>
+      </div>
+    </div>
+
+    <!-- Data sidebar -->
+    <div id="sidebar-data" style="display:none; flex-direction:column; flex:1;">
+      <div class="sidebar-section">
+        <div class="sidebar-label">Exported Data on Disk</div>
+        <button class="btn btn-outline btn-block" onclick="loadDataBrowser()">⟳ Refresh</button>
+      </div>
+      <div class="search-bar">
+        <input type="text" id="data-search" placeholder="Filter groups…" oninput="filterDataGroups()" />
+      </div>
+      <div class="browse-hint" id="data-browse-hint">Click a group to inspect</div>
+      <div class="group-list" id="data-group-list">
+        <div class="empty"><div class="empty-icon">⬡</div>No export on disk yet</div>
+      </div>
+    </div>
+  </aside>
+
+  <div class="content">
+
+    <!-- Export panel -->
+    <div class="panel active" id="panel-export">
+      <div class="panel-header">
+        <div class="panel-title">Export — Group Configuration</div>
+        <button class="btn btn-outline btn-sm hidden" id="exp-clear-btn" onclick="clearExportResults()">Clear</button>
+      </div>
+      <div class="panel-body">
+        <div class="empty" id="exp-empty">
+          <div class="empty-icon">⬡</div>
+          Connect to a source cluster to begin.<br>
+          Exported files are written to <code style="font-family:var(--mono);color:var(--amber)">exports/</code>
+        </div>
+        <div class="hidden" id="exp-results">
+          <div class="section-heading">Progress</div>
+          <div class="progress-section">
+            <div class="progress-label"><span id="exp-prog-label">Ready</span><span id="exp-prog-pct">0%</span></div>
+            <div class="progress-bar"><div class="progress-fill" id="exp-prog-fill"></div></div>
+          </div>
+          <div class="stats">
+            <div class="stat ok">  <div class="stat-num" id="exp-n-ok">0</div>  <div class="stat-label">Exported</div></div>
+            <div class="stat warn"><div class="stat-num" id="exp-n-warn">0</div><div class="stat-label">Warnings</div></div>
+            <div class="stat fail"><div class="stat-num" id="exp-n-fail">0</div><div class="stat-label">Failed</div></div>
+          </div>
+          <div class="section-heading">Groups</div>
+          <div class="results-grid" id="exp-cards"></div>
+          <div class="section-heading mt16">Log</div>
+          <div class="log-terminal" id="exp-log"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Import panel -->
+    <div class="panel" id="panel-import">
+      <div class="panel-header">
+        <div class="panel-title">Import — Group Configuration</div>
+        <button class="btn btn-outline btn-sm hidden" id="imp-clear-btn" onclick="clearImportResults()">Clear</button>
+      </div>
+      <div class="panel-body">
+        <div class="empty" id="imp-empty">
+          <div class="empty-icon">⬡</div>
+          Load an export manifest from disk,<br>select groups, then import to a target cluster.
+        </div>
+        <div class="hidden" id="imp-manifest-section">
+          <div class="section-heading">Export Manifest</div>
+          <div class="manifest-meta" id="imp-manifest-meta"></div>
+        </div>
+        <div class="hidden" id="imp-results">
+          <div class="section-heading">Progress</div>
+          <div class="progress-section">
+            <div class="progress-label"><span id="imp-prog-label">Ready</span><span id="imp-prog-pct">0%</span></div>
+            <div class="progress-bar"><div class="progress-fill" id="imp-prog-fill"></div></div>
+          </div>
+          <div class="stats">
+            <div class="stat ok">  <div class="stat-num" id="imp-n-ok">0</div>  <div class="stat-label">Created</div></div>
+            <div class="stat warn"><div class="stat-num" id="imp-n-skip">0</div><div class="stat-label">Skipped</div></div>
+            <div class="stat fail"><div class="stat-num" id="imp-n-fail">0</div><div class="stat-label">Failed</div></div>
+          </div>
+          <div class="section-heading">Groups</div>
+          <div class="results-grid" id="imp-cards"></div>
+          <div class="section-heading mt16">Log</div>
+          <div class="log-terminal" id="imp-log"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Data browser panel -->
+    <div class="panel" id="panel-data">
+      <div class="panel-header">
+        <div class="panel-title">Data — Exported Configuration Browser</div>
+        <button class="btn btn-outline btn-sm" onclick="loadDataBrowser()">⟳ Refresh</button>
+      </div>
+      <div class="panel-body">
+        <div class="empty" id="data-empty">
+          <div class="empty-icon">⬡</div>
+          No export found on disk.<br>Run an export first, then return here to browse.
+        </div>
+        <div class="hidden" id="data-content">
+          <div class="section-heading">Manifest</div>
+          <div class="manifest-meta" id="data-manifest-meta"></div>
+          <div class="section-heading">Summary</div>
+          <div class="summary-row" id="data-summary-row"></div>
+          <div class="section-heading">Group Detail</div>
+          <div class="empty" id="data-no-selection" style="padding:24px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface)">
+            <div class="empty-icon" style="font-size:20px">←</div>
+            Select a group from the sidebar to inspect its exported configuration
+          </div>
+          <div class="hidden group-detail" id="data-group-detail"></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<footer class="status-bar">
+  <div class="status-dot" id="status-dot"></div>
+  <span id="status-text">Idle</span>
+</footer>
+
+<script>
+let expGroups = [], impGroups = [], dataGroups = [], dataGroupsFiltered = [];
+let expSelected = new Set(), impSelected = new Set();
+let activeDataGroup = null, busy = false;
+
+// ── sessionStorage — credentials persist across tab switches, cleared on window close ─
+// Keys are namespaced to avoid collisions with other apps on the same origin.
+const SS = {
+  exp_url:   'cgm_exp_url',
+  exp_token: 'cgm_exp_token',
+  imp_url:   'cgm_imp_url',
+  imp_token: 'cgm_imp_token',
+};
+
+function saveSession(prefix) {
+  const url   = document.getElementById(`${prefix}-url`).value;
+  const token = document.getElementById(`${prefix}-token`).value;
+  sessionStorage.setItem(SS[`${prefix}_url`],   url);
+  sessionStorage.setItem(SS[`${prefix}_token`], token);
+  updateSessionBar(prefix);
+  // Clear any stale error banner as the user edits credentials
+  clearError(`${prefix}-error-banner`);
+}
+
+function clearSession(prefix) {
+  sessionStorage.removeItem(SS[`${prefix}_url`]);
+  sessionStorage.removeItem(SS[`${prefix}_token`]);
+  document.getElementById(`${prefix}-url`).value   = '';
+  document.getElementById(`${prefix}-token`).value = '';
+  updateSessionBar(prefix);
+}
+
+function updateSessionBar(prefix) {
+  const url   = sessionStorage.getItem(SS[`${prefix}_url`])   || '';
+  const token = sessionStorage.getItem(SS[`${prefix}_token`]) || '';
+  const bar   = document.getElementById(`${prefix}-session-bar`);
+  bar.classList.toggle('visible', !!(url || token));
+}
+
+function restoreSession() {
+  for (const prefix of ['exp', 'imp']) {
+    const url   = sessionStorage.getItem(SS[`${prefix}_url`]);
+    const token = sessionStorage.getItem(SS[`${prefix}_token`]);
+    if (url)   document.getElementById(`${prefix}-url`).value   = url;
+    if (token) document.getElementById(`${prefix}-token`).value = token;
+    updateSessionBar(prefix);
+  }
+}
+
+// Restore on load
+document.addEventListener('DOMContentLoaded', restoreSession);
+
+// ── Tab switching ─────────────────────────────────────────────────────────
+function switchTab(tab) {
+  const tabs = ['export', 'import', 'data'];
+  document.querySelectorAll('.tab').forEach((t, i) =>
+    t.classList.toggle('active', tabs[i] === tab));
+  document.getElementById('sidebar-export').style.display = tab === 'export' ? '' : 'none';
+  document.getElementById('sidebar-import').style.display = tab === 'import' ? '' : 'none';
+  const sd = document.getElementById('sidebar-data');
+  sd.style.display = tab === 'data' ? 'flex' : 'none';
+  tabs.forEach(t => document.getElementById(`panel-${t}`).classList.toggle('active', t === tab));
+  if (tab === 'data') loadDataBrowser();
+}
+
+function setStatus(state, msg) {
+  document.getElementById('status-dot').className = 'status-dot' + (state ? ' ' + state : '');
+  document.getElementById('status-text').textContent = msg;
+}
+
+function log(id, msg, cls = '') {
+  const el = document.getElementById(id);
+  const ts = new Date().toLocaleTimeString('en-US', {hour12: false});
+  const line = document.createElement('div');
+  line.className = 'log-line' + (cls ? ' log-' + cls : '');
+  line.innerHTML = `<span class="log-ts">${ts}</span><span class="log-msg">${msg}</span>`;
+  el.appendChild(line);
+  el.scrollTop = el.scrollHeight;
+}
+
+function typeBadge(types) {
+  if (!types || !types.length) return '';
+  const hasIAP = types.includes('IAP');
+  const hasSW  = types.some(t => ['ArubaSwitch','CX','MobilityController'].includes(t));
+  const cls    = hasIAP && hasSW ? 'type-mixed' : hasIAP ? 'type-iap' : 'type-sw';
+  const label  = types.map(t => t === 'ArubaSwitch' ? 'SW' : t === 'MobilityController' ? 'MC' : t).join('+');
+  return `<span class="type-badge ${cls}">${label}</span>`;
+}
+
+function boolDisplay(v) {
+  return v ? '<span class="prop-bool-true">true</span>'
+           : '<span class="prop-bool-false">false</span>';
+}
+
+function highlightCli(text) {
+  if (!text) return '<span class="prop-bool-false">— no CLI config —</span>';
+  return text.split('\n').map(line => {
+    const e = line.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    if (/^\s*[!#]/.test(e)) return `<span class="cli-comment">${e}</span>`;
+    return e
+      .replace(/\b(no|exit|end|do|show|interface|ip|ipv6|vlan|spanning-tree|access-list|permit|deny|aaa|radius|tacacs|ntp|snmp|logging|hostname|wlan|ssid|security|encryption|authentication|rf-band|mgmt-vlan|country-code|virtual-controller|system)\b/g,
+        '<span class="cli-kw">$1</span>')
+      .replace(/"([^"]*)"/g, '<span class="cli-str">"$1"</span>')
+      .replace(/\b(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(?:\/\d+)?)\b/g, '<span class="cli-num">$1</span>')
+      .replace(/(?<![.\d])(\b\d+\b)(?![.\d])/g, '<span class="cli-num">$1</span>')
+      .replace(/^(\s+)([a-z][a-z0-9-]*)(\s)/, '$1<span class="cli-key">$2</span>$3');
+  }).join('\n');
+}
+
+function copyCliConfig(text) {
+  navigator.clipboard.writeText(text).then(() => {
+    const f = document.getElementById('cli-copy-flash');
+    f.classList.add('show');
+    setTimeout(() => f.classList.remove('show'), 1500);
+  });
+}
+
+function setProgress(p, done, total, label) {
+  const pct = total > 0 ? Math.round(done / total * 100) : 0;
+  document.getElementById(`${p}-prog-fill`).style.width  = pct + '%';
+  document.getElementById(`${p}-prog-pct`).textContent   = pct + '%';
+  document.getElementById(`${p}-prog-label`).textContent = `${label} — ${done} / ${total}`;
+}
+function resetStats(p, ok, warn, fail) {
+  document.getElementById(`${p}-n-ok`).textContent   = ok;
+  document.getElementById(`${p}-n-warn`).textContent = warn;
+  document.getElementById(`${p}-n-fail`).textContent = fail;
+}
+function resetImpStats(ok, skip, fail) {
+  document.getElementById('imp-n-ok').textContent   = ok;
+  document.getElementById('imp-n-skip').textContent = skip;
+  document.getElementById('imp-n-fail').textContent = fail;
+}
+
+// ── Export ────────────────────────────────────────────────────────────────
+function showError(bannerId, msg) {
+  const banner = document.getElementById(bannerId);
+  // Detect token-expiry class of messages and bold the opening line
+  const isAuth = msg.toLowerCase().includes('expired') || msg.toLowerCase().includes('invalid_token');
+  banner.innerHTML = isAuth
+    ? `<strong>Token invalid or expired</strong>${msg}`
+    : `<strong>Connection failed</strong>${msg}`;
+  banner.classList.add('visible');
+}
+
+function clearError(bannerId) {
+  const banner = document.getElementById(bannerId);
+  if (banner) { banner.innerHTML = ''; banner.classList.remove('visible'); }
+}
+
+async function connectExport() {
+  const url   = document.getElementById('exp-url').value.trim();
+  const token = document.getElementById('exp-token').value.trim();
+  if (!url || !token) {
+    showError('exp-error-banner', 'Enter a Base URL and Access Token before connecting.');
+    return;
+  }
+  clearError('exp-error-banner');
+  setStatus('busy', 'Connecting…');
+  try {
+    const resp = await fetch('/api/connect', {
+      method:  'POST',
+      headers: {'Content-Type': 'application/json'},
+      body:    JSON.stringify({base_url: url, token})
+    });
+    const d = await resp.json();
+    if (!d.ok) { showError('exp-error-banner', d.error); setStatus('error', 'Connection failed'); return; }
+    clearError('exp-error-banner');
+    expGroups   = d.groups.map(g => ({name: g, allowed_types: (d.properties[g]||{}).allowed_types||[]}));
+    expSelected = new Set(expGroups.map(g => g.name));
+    renderExpGroups();
+    setStatus('connected', `Connected — ${expGroups.length} groups`);
+    document.getElementById('exp-select-bar').classList.remove('hidden');
+    document.getElementById('exp-run-section').style.display = '';
+  } catch(e) {
+    showError('exp-error-banner', `Network error — cannot reach the API Gateway. Check the Base URL and your network connectivity.`);
+    setStatus('error', 'Connection failed');
+  }
+}
+
+function renderExpGroups() {
+  const el = document.getElementById('exp-group-list');
+  if (!expGroups.length) { el.innerHTML='<div class="empty"><div class="empty-icon">⬡</div>No groups found</div>'; return; }
+  el.innerHTML = expGroups.map(g => `
+    <div class="group-item ${expSelected.has(g.name)?'selected':''}" onclick="toggleExp('${g.name}')">
+      <input type="checkbox" class="group-checkbox" ${expSelected.has(g.name)?'checked':''} onclick="event.stopPropagation();toggleExp('${g.name}')">
+      <span class="group-name" title="${g.name}">${g.name}</span>${typeBadge(g.allowed_types)}
+    </div>`).join('');
+  document.getElementById('exp-select-count').textContent = `${expSelected.size} of ${expGroups.length} selected`;
+}
+function toggleExp(n) { expSelected.has(n)?expSelected.delete(n):expSelected.add(n); renderExpGroups(); }
+function selectAll(v) { expSelected = v?new Set(expGroups.map(g=>g.name)):new Set(); renderExpGroups(); }
+
+async function runExport() {
+  if (busy || !expSelected.size) return;
+  const url = document.getElementById('exp-url').value.trim();
+  const token = document.getElementById('exp-token').value.trim();
+  busy = true; setStatus('busy','Exporting…');
+  document.getElementById('exp-empty').classList.add('hidden');
+  document.getElementById('exp-results').classList.remove('hidden');
+  document.getElementById('exp-clear-btn').classList.add('hidden');
+  document.getElementById('exp-cards').innerHTML = document.getElementById('exp-log').innerHTML = '';
+  resetStats('exp',0,0,0);
+  let total=expSelected.size, done=0, nOk=0, nWarn=0, nFail=0;
+  const {op_id} = await (await fetch('/api/export',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({base_url:url,token,groups:[...expSelected]})})).json();
+  const es = new EventSource(`/api/export/progress/${op_id}`);
+  es.addEventListener('start', e => { const d=JSON.parse(e.data); total=d.total; log('exp-log',`Exporting ${total} groups`,'info'); setProgress('exp',0,total,'Exporting'); });
+  es.addEventListener('group_done', e => {
+    const d=JSON.parse(e.data); done++;
+    const cls=d.files.some(f=>f.status==='fail')?'fail':d.files.some(f=>f.status==='warn')?'warn':'ok';
+    if(cls==='ok')nOk++;else if(cls==='warn')nWarn++;else nFail++;
+    const card=document.createElement('div'); card.className=`result-card ${cls}`;
+    card.innerHTML=`<div><div class="result-name">${d.group}</div><div class="result-files">${d.files.map(f=>`<span class="result-file ${f.status}">${f.file}${f.detail?' ('+f.detail+')':''}</span>`).join('')}</div></div><div class="result-status ${cls}">${cls.toUpperCase()}</div>`;
+    document.getElementById('exp-cards').appendChild(card);
+    log('exp-log',`${d.group} — ${d.files.map(f=>f.file).join(', ')}`,cls==='ok'?'ok':'warn');
+    setProgress('exp',done,total,'Exporting'); resetStats('exp',nOk,nWarn,nFail);
+  });
+  es.addEventListener('complete', e => { const d=JSON.parse(e.data); log('exp-log',`Done — ${d.total} groups`,'ok'); setStatus('connected',`Export complete`); setProgress('exp',total,total,'Complete'); document.getElementById('exp-clear-btn').classList.remove('hidden'); busy=false; es.close(); });
+  es.addEventListener('error', e => { try{log('exp-log','Error: '+JSON.parse(e.data).message,'err');}catch{} setStatus('error','Export failed'); busy=false; es.close(); });
+  es.onerror = () => { if(!busy)return; busy=false; setStatus('error','Connection lost'); es.close(); };
+}
+function clearExportResults() { document.getElementById('exp-results').classList.add('hidden'); document.getElementById('exp-empty').classList.remove('hidden'); document.getElementById('exp-clear-btn').classList.add('hidden'); }
+
+// ── Import ────────────────────────────────────────────────────────────────
+async function loadManifest() {
+  setStatus('busy','Loading manifest…');
+  try {
+    // Use /api/groups — it returns the manifest, enriched group objects (with
+    // renamed + import_name), and is the same endpoint used by the Data tab.
+    const d = await (await fetch('/api/groups')).json();
+    if (!d.ok) throw new Error(d.error);
+    const m = d.manifest;
+    // impGroups are enriched objects: {name, import_name, renamed, allowed_types, ...}
+    impGroups    = d.groups;
+    impSelected  = new Set(impGroups.map(g => g.name));
+    const renamedCount = impGroups.filter(g => g.renamed).length;
+
+    document.getElementById('imp-manifest-section').classList.remove('hidden');
+    document.getElementById('imp-manifest-meta').innerHTML =
+      `<span class="manifest-key">Source</span><span class="manifest-val">${m._source_cluster}</span>` +
+      `<span class="manifest-key">Exported</span><span class="manifest-val">${m._exported_at}</span>` +
+      `<span class="manifest-key">Groups</span><span class="manifest-val">${impGroups.length}</span>` +
+      (renamedCount ? `<span class="manifest-key">Renames set</span><span class="manifest-val" style="color:var(--amber)">${renamedCount}</span>` : '');
+
+    renderImpGroups();
+    document.getElementById('imp-select-bar').classList.remove('hidden');
+    document.getElementById('imp-run-section').style.display = '';
+    document.getElementById('imp-empty').classList.add('hidden');
+    setStatus('connected', `Manifest loaded — ${impGroups.length} groups`);
+  } catch(e) { setStatus('error', e.message); alert('Failed: ' + e.message); }
+}
+function renderImpGroups() {
+  const el=document.getElementById('imp-group-list');
+  if(!impGroups.length){el.innerHTML='<div class="empty"><div class="empty-icon">⬡</div>No groups</div>';return;}
+  el.innerHTML=impGroups.map(g=>{
+    const title = g.renamed ? `${g.name} → ${g.import_name}` : g.name;
+    const arrow = g.renamed
+      ? `<span class="rename-arrow" title="Will be imported as ${g.import_name}">→ ${g.import_name}</span>`
+      : '';
+    return `<div class="group-item ${impSelected.has(g.name)?'selected':''}" onclick="toggleImp('${g.name}')">
+      <input type="checkbox" class="group-checkbox" ${impSelected.has(g.name)?'checked':''}
+             onclick="event.stopPropagation();toggleImp('${g.name}')">
+      <span class="group-name" title="${title}">${g.name}</span>
+      ${arrow}${typeBadge(g.allowed_types)}
+    </div>`;
+  }).join('');
+  document.getElementById('imp-select-count').textContent=`${impSelected.size} of ${impGroups.length} selected`;
+}
+function toggleImp(n){impSelected.has(n)?impSelected.delete(n):impSelected.add(n);renderImpGroups();}
+function selectAllImp(v){impSelected=v?new Set(impGroups.map(g=>g.name)):new Set();renderImpGroups();}
+
+async function runImport() {
+  if(busy||!impSelected.size)return;
+  const url=document.getElementById('imp-url').value.trim(), token=document.getElementById('imp-token').value.trim();
+  if(!url||!token)return alert('Enter target credentials');
+  busy=true; setStatus('busy','Importing…');
+  document.getElementById('imp-results').classList.remove('hidden'); document.getElementById('imp-clear-btn').classList.add('hidden');
+  document.getElementById('imp-cards').innerHTML=document.getElementById('imp-log').innerHTML='';
+  resetImpStats(0,0,0);
+  let total=impSelected.size, done=0, nOk=0, nSkip=0, nFail=0;
+  const {op_id}=await(await fetch('/api/import',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({base_url:url,token,groups:[...impSelected]})})).json();
+  const es=new EventSource(`/api/import/progress/${op_id}`);
+  es.addEventListener('start',e=>{const d=JSON.parse(e.data);if(d.skipped&&d.skipped.length){nSkip+=d.skipped.length;d.skipped.forEach(g=>{addImpCard({group:g,status:'skip',steps:[]});log('imp-log',`${g} — already exists`,'warn');});}log('imp-log',`Importing ${d.total} groups`,'info');setProgress('imp',0,d.total||1,'Importing');});
+  es.addEventListener('group_done',e=>{
+    const d=JSON.parse(e.data);
+    done++;
+    if(d.status==='ok')nOk++;else nFail++;
+    addImpCard(d);
+    const logLabel = d.renamed && d.import_name
+      ? `${d.group} → ${d.import_name}`
+      : d.group;
+    log('imp-log',`${logLabel} — ${d.status}`,d.status==='ok'?'ok':'err');
+    setProgress('imp',done,total-nSkip,'Importing');
+    resetImpStats(nOk,nSkip,nFail);
+  });
+  es.addEventListener('complete',e=>{const d=JSON.parse(e.data);log('imp-log',`Done — ${d.total} created, ${d.skipped} skipped`,'ok');setStatus('connected','Import complete');setProgress('imp',total-nSkip,total-nSkip,'Complete');document.getElementById('imp-clear-btn').classList.remove('hidden');busy=false;es.close();});
+  es.addEventListener('error',e=>{try{log('imp-log','Error: '+JSON.parse(e.data).message,'err');}catch{}setStatus('error','Import failed');busy=false;es.close();});
+  es.onerror=()=>{if(!busy)return;busy=false;setStatus('error','Connection lost');es.close();};
+}
+function addImpCard(d){
+  const cls=d.status==='ok'?'ok':d.status==='skip'?'skip':'fail';
+  const card=document.createElement('div');card.className=`result-card ${cls}`;
+  const steps=(d.steps||[]).map(s=>`<div class="step"><div class="step-dot ${s.ok?'ok':'fail'}"></div>${s.name}</div>`).join('');
+  // Show "OriginalName → ImportName" when renamed, plain name otherwise
+  const label = d.renamed && d.import_name && d.import_name !== d.group
+    ? `${d.group} <span class="rename-arrow">→ ${d.import_name}</span>`
+    : d.group;
+  card.innerHTML=`<div><div class="result-name">${label}</div>${steps?`<div class="step-list">${steps}</div>`:''}</div><div class="result-status ${cls}">${cls==='skip'?'SKIPPED':cls.toUpperCase()}</div>`;
+  document.getElementById('imp-cards').appendChild(card);
+}
+function clearImportResults(){document.getElementById('imp-results').classList.add('hidden');document.getElementById('imp-clear-btn').classList.add('hidden');}
+
+// ── Data browser ──────────────────────────────────────────────────────────
+async function loadDataBrowser() {
+  setStatus('busy','Loading exported data…');
+  try {
+    const d = await (await fetch('/api/groups')).json();
+    if (!d.ok) {
+      document.getElementById('data-empty').classList.remove('hidden');
+      document.getElementById('data-content').classList.add('hidden');
+      setStatus('','No export on disk'); return;
+    }
+    dataGroups = d.groups; dataGroupsFiltered = [...dataGroups]; activeDataGroup = null;
+    const m = d.manifest;
+    document.getElementById('data-manifest-meta').innerHTML = `
+      <span class="manifest-key">Source cluster</span><span class="manifest-val">${m._source_cluster}</span>
+      <span class="manifest-key">Exported at</span><span class="manifest-val">${m._exported_at}</span>
+      <span class="manifest-key">Groups on disk</span><span class="manifest-val">${dataGroups.length}</span>`;
+    const iapCount    = dataGroups.filter(g=>g.allowed_types.includes('IAP')).length;
+    const swCount     = dataGroups.filter(g=>g.allowed_types.some(t=>['ArubaSwitch','CX','MobilityController'].includes(t))).length;
+    const totalWlans  = dataGroups.reduce((s,g) => s + (g.n_wlans||0), 0);
+    const totalDevCfg = dataGroups.reduce((s,g) => s + (g.n_device_configs||0), 0);
+    document.getElementById('data-summary-row').innerHTML = `
+      <div class="summary-card"><div class="summary-num">${dataGroups.length}</div><div class="summary-label">Total Groups</div></div>
+      <div class="summary-card"><div class="summary-num" style="color:var(--blue)">${iapCount}</div><div class="summary-label">IAP Groups</div></div>
+      <div class="summary-card"><div class="summary-num" style="color:var(--green)">${totalWlans}</div><div class="summary-label">Total WLANs</div></div>
+      <div class="summary-card"><div class="summary-num" style="color:var(--amber)">${totalDevCfg}</div><div class="summary-label">Device Configs</div></div>`;
+    document.getElementById('data-empty').classList.add('hidden');
+    document.getElementById('data-content').classList.remove('hidden');
+    document.getElementById('data-browse-hint').style.display = '';
+    document.getElementById('data-no-selection').classList.remove('hidden');
+    document.getElementById('data-group-detail').classList.add('hidden');
+    renderDataGroupList();
+    setStatus('connected',`${dataGroups.length} groups on disk`);
+  } catch(e) { setStatus('error',e.message); }
+}
+
+function filterDataGroups() {
+  const q = document.getElementById('data-search').value.toLowerCase();
+  dataGroupsFiltered = q ? dataGroups.filter(g=>g.name.toLowerCase().includes(q)) : [...dataGroups];
+  renderDataGroupList();
+}
+
+function renderDataGroupList() {
+  const el = document.getElementById('data-group-list');
+  if (!dataGroupsFiltered.length) { el.innerHTML='<div class="empty"><div class="empty-icon">⬡</div>No matches</div>'; return; }
+  el.innerHTML = dataGroupsFiltered.map(g => `
+    <div class="group-item ${activeDataGroup===g.name?'active-browse':''}" onclick="selectDataGroup('${g.name}')">
+      <span class="group-name" title="${g.renamed ? g.name+' → '+g.import_name : g.name}">${g.name}</span>
+      ${g.renamed ? `<span class="rename-arrow" title="Will be imported as ${g.import_name}">→ ${g.import_name}</span>` : ''}
+      ${typeBadge(g.allowed_types)}
+    </div>`).join('');
+}
+
+async function selectDataGroup(name) {
+  activeDataGroup = name; renderDataGroupList();
+  setStatus('busy',`Loading ${name}…`);
+  try {
+    const d = await (await fetch(`/api/groups/${encodeURIComponent(name)}`)).json();
+    if (!d.ok) throw new Error(d.error);
+    renderGroupDetail(d); setStatus('connected',`Viewing: ${name}`);
+  } catch(e) { setStatus('error',e.message); }
+}
+
+function wlanSecClass(w) {
+  const op = (w.opmode||w.type||w.security||'').toLowerCase();
+  if (op.includes('wpa3'))        return 'wlan-wpa3';
+  if (op.includes('wpa2') || op.includes('wpa_psk') || op.includes('psk')) return 'wlan-wpa2';
+  if (op.includes('open') || op === '')  return 'wlan-open';
+  return 'wlan-other';
+}
+
+function renderGroupDetail(d) {
+  const props   = d.properties || {};
+  const allowed = props.allowed_types || [];
+  const hasIAP  = allowed.includes('IAP');
+  const files   = dataGroups.find(g=>g.name===d.name)?.files || [];
+  const renamed = !!d.renamed;
+  const iname   = d.import_name || d.name;
+
+  // File pills — show all known artefacts
+  const ARTEFACTS = [
+    'properties.json','ap_cli_config.json','country.json',
+    'wlans.json','wlans_summary.json','device_ap_configs','ap_settings'
+  ];
+  const filesPills = ARTEFACTS.map(a =>
+    `<span class="file-pill ${files.includes(a)?'present':''}">${a}</span>`
+  ).join('');
+
+  // Properties grid
+  const propRows = [
+    ['allowed_types',   allowed.join(', ') || '—'],
+    ['aos10',           boolDisplay(props.aos10)],
+    ['monitor_only_sw', boolDisplay(props.monitor_only_sw)],
+    ['monitor_only_cx', boolDisplay(props.monitor_only_cx)],
+  ];
+  if (d.country) propRows.push(['country_code', `<span style="color:var(--text-hi)">${d.country}</span>`]);
+  const propHTML = propRows.map(([k,v]) => `
+    <div class="prop-row"><div class="prop-key">${k}</div><div class="prop-val">${v}</div></div>`).join('');
+
+  // WLAN table
+  const wlans = d.wlans || [];
+  let wlanSection = '';
+  if (hasIAP) {
+    const wlanRows = wlans.length
+      ? wlans.map(w => {
+          const name   = w.essid || w.wlan_name || w.name || '—';
+          const vlan   = w.vlan || '—';
+          const hidden = w.hide_ssid ? '<span style="color:var(--muted)">hidden</span>' : 'visible';
+          const secCls = wlanSecClass(w);
+          const secLbl = (w.opmode||w.type||w.security||'open').replace(/_/g,' ');
+          const bwU    = w.bandwidth_limit_up    || '—';
+          const bwD    = w.bandwidth_limit_down  || '—';
+          return `<tr>
+            <td>${name}</td>
+            <td><span class="wlan-badge ${secCls}">${secLbl}</span></td>
+            <td>${vlan}</td>
+            <td>${hidden}</td>
+            <td>${bwU} / ${bwD}</td>
+          </tr>`;
+        }).join('')
+      : `<tr><td colspan="5" style="color:var(--muted);text-align:center;padding:16px">No WLANs exported</td></tr>`;
+
+    wlanSection = `
+    <div class="detail-section">
+      <div class="detail-section-header">
+        <span>WLANs</span>
+        <span class="count-chip">${wlans.length}</span>
+      </div>
+      <table class="wlan-table">
+        <thead><tr><th>SSID</th><th>Security</th><th>VLAN</th><th>Visibility</th><th>BW Up / Down</th></tr></thead>
+        <tbody>${wlanRows}</tbody>
+      </table>
+    </div>`;
+  }
+
+  // Device & AP settings counts
+  const nDevCfg  = d.n_device_configs || 0;
+  const nApSett  = d.n_ap_settings    || 0;
+  let deviceSection = '';
+  if (hasIAP && (nDevCfg > 0 || nApSett > 0)) {
+    deviceSection = `
+    <div class="detail-section">
+      <div class="detail-section-header"><span>Per-Device Data</span></div>
+      <div class="prop-grid">
+        <div class="prop-row">
+          <div class="prop-key">device_ap_configs</div>
+          <div class="prop-val">${nDevCfg} AP${nDevCfg!==1?'s':''} with unique override config</div>
+        </div>
+        <div class="prop-row">
+          <div class="prop-key">ap_settings</div>
+          <div class="prop-val">${nApSett} AP${nApSett!==1?'s':''} with hostname/zone/radio settings</div>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  // CLI config block
+  const rawCli = Array.isArray(d.cli_config)
+    ? d.cli_config.join('\n')
+    : (d.cli_config || '');
+  const cliSection = hasIAP ? `
+    <div class="detail-section cli-section">
+      <div class="cli-header">
+        <span>ap_cli_config — ${d.cli_config ? (Array.isArray(d.cli_config) ? d.cli_config.length : rawCli.split('\n').length) : 0} lines</span>
+        <button class="btn btn-outline btn-sm btn-copy" onclick='copyCliConfig(${JSON.stringify(rawCli)})'>
+          <span class="copy-flash" id="cli-copy-flash">Copied!</span>⎘ Copy
+        </button>
+      </div>
+      <div class="cli-block">${highlightCli(rawCli)}</div>
+    </div>` : '';
+
+  const detail = document.getElementById('data-group-detail');
+  detail.innerHTML = `
+    <div class="group-detail-header">
+      <div class="group-name-display" id="rename-display">
+        <div class="group-detail-name">${d.name}</div>
+        ${renamed ? `<span class="rename-badge"><span class="arr">→</span>${iname}</span>` : ''}
+        <button class="btn btn-outline btn-sm" onclick="openRenameEditor()"
+                style="flex-shrink:0" title="${renamed?'Edit rename':'Set import rename'}">
+          ✎ ${renamed ? 'Edit' : 'Rename'}
+        </button>
+        ${renamed ? `<button class="btn btn-outline btn-sm" style="color:var(--red);border-color:var(--red);flex-shrink:0"
+                             onclick="clearRename('${d.name}')" title="Remove rename">✕ Clear</button>` : ''}
+      </div>
+      <div class="rename-editor" id="rename-editor">
+        <input class="rename-input" id="rename-input"
+               placeholder="Import as…"
+               value="${renamed ? iname : ''}"
+               maxlength="32"
+               onkeydown="handleRenameKey(event,'${d.name}')" />
+        <div class="rename-actions">
+          <button class="btn btn-primary btn-sm" onclick="saveRename('${d.name}')">Save</button>
+          <button class="btn btn-outline btn-sm" onclick="cancelRename()">Cancel</button>
+        </div>
+      </div>
+      <div class="file-pills">${filesPills}</div>
+    </div>
+    <div>
+      <div class="prop-grid">${propHTML}</div>
+      ${wlanSection}
+      ${deviceSection}
+      ${cliSection}
+    </div>`;
+
+  document.getElementById('data-no-selection').classList.add('hidden');
+  detail.classList.remove('hidden');
+}
+// ── Rename editor ─────────────────────────────────────────────────────────
+
+function openRenameEditor() {
+  document.getElementById('rename-display').style.display = 'none';
+  const editor = document.getElementById('rename-editor');
+  editor.classList.add('active');
+  const input = document.getElementById('rename-input');
+  input.focus();
+  input.select();
+}
+
+function cancelRename() {
+  document.getElementById('rename-display').style.display = '';
+  document.getElementById('rename-editor').classList.remove('active');
+}
+
+function handleRenameKey(e, groupName) {
+  if (e.key === 'Enter')  saveRename(groupName);
+  if (e.key === 'Escape') cancelRename();
+}
+
+async function saveRename(groupName) {
+  const newName = document.getElementById('rename-input').value.trim();
+  setStatus('busy', 'Saving rename…');
+  try {
+    const r = await fetch(`/api/groups/${encodeURIComponent(groupName)}/rename`, {
+      method:  'PATCH',
+      headers: {'Content-Type': 'application/json'},
+      body:    JSON.stringify({new_name: newName})
+    });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error);
+
+    // Patch local cache so sidebar updates instantly without a full reload
+    const g = dataGroups.find(x => x.name === groupName);
+    if (g) { g.renamed = d.renamed; g.import_name = d.import_name; }
+    const gf = dataGroupsFiltered.find(x => x.name === groupName);
+    if (gf) { gf.renamed = d.renamed; gf.import_name = d.import_name; }
+
+    renderDataGroupList();
+    setStatus('connected', d.renamed
+      ? `Rename set: ${groupName} → ${d.import_name}`
+      : `Rename cleared for ${groupName}`);
+    // Re-render the detail panel to show the updated state
+    selectDataGroup(groupName);
+  } catch(err) {
+    setStatus('error', err.message);
+    alert('Failed to save rename: ' + err.message);
+    cancelRename();
+  }
+}
+
+async function clearRename(groupName) {
+  setStatus('busy', 'Clearing rename…');
+  try {
+    const r = await fetch(`/api/groups/${encodeURIComponent(groupName)}/rename`, {
+      method:  'PATCH',
+      headers: {'Content-Type': 'application/json'},
+      body:    JSON.stringify({new_name: ''})
+    });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error);
+
+    const g = dataGroups.find(x => x.name === groupName);
+    if (g) { g.renamed = false; g.import_name = groupName; }
+    const gf = dataGroupsFiltered.find(x => x.name === groupName);
+    if (gf) { gf.renamed = false; gf.import_name = groupName; }
+
+    renderDataGroupList();
+    setStatus('connected', `Rename cleared for ${groupName}`);
+    selectDataGroup(groupName);
+  } catch(err) {
+    setStatus('error', err.message);
+  }
+}
+
+</script>
+</body>
+</html>

@@ -1,0 +1,7 @@
+# pycentral v2 pre-release required for pycentral.classic module support.
+# The classic module provides ApConfiguration, Wlan, ApSettings, etc.
+# v1 (pycentral==1.4.x) only has pycentral.configuration at the top level.
+pycentral>=2.0a17
+flask==3.1.0
+flask-cors==5.0.0
+gunicorn==23.0.0

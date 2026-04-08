@@ -1,0 +1,24 @@
+services:
+  central-migration:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: central-group-migration:latest
+    container_name: central-migration
+    ports:
+      - "8000:8000"
+    volumes:
+      # Persist exported group data across container restarts/upgrades.
+      # Bind-mount a local directory so exports are accessible on the host
+      # for inspection, git commits, or copying to another machine.
+      - ./exports:/app/exports
+    restart: unless-stopped
+    environment:
+      # Optional: override gunicorn args without rebuilding the image
+      - GUNICORN_CMD_ARGS=--bind=0.0.0.0:8000 --workers=1 --threads=8 --timeout=120 --keep-alive=5 --access-logfile=- --error-logfile=-
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s

@@ -1,0 +1,87 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  validate:
+    name: Lint & import check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Check all modules import cleanly
+        run: |
+          python -c "
+          from app import app
+          from exporters import EXPORTERS, get_active_exporters
+          from pycentral.base import ArubaCentralBase
+          from pycentral.configuration import Groups
+          import importlib.metadata
+
+          for pkg in ['pycentral', 'flask', 'flask-cors', 'gunicorn']:
+              v = importlib.metadata.version(pkg)
+              print(f'  {pkg}: {v}')
+
+          routes = [r.rule for r in app.url_map.iter_rules()]
+          required = ['/health', '/api/connect', '/api/export', '/api/import',
+                      '/api/groups', '/api/manifest']
+          for r in required:
+              assert r in routes, f'Missing route: {r}'
+
+          assert len(EXPORTERS) >= 3, 'Exporter registry is empty'
+          print(f'  Routes: {len(routes)} registered')
+          print(f'  Exporters: {len(EXPORTERS)} registered')
+          print('All checks passed')
+          "
+
+      - name: Validate Dockerfile syntax
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: Dockerfile
+          ignore: DL3008,DL3009
+        continue-on-error: true
+
+  docker-build:
+    name: Docker build
+    runs-on: ubuntu-latest
+    needs: validate
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: false
+          tags: central-group-migration:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Smoke test health endpoint
+        run: |
+          docker run -d --name test-container \
+            -p 8000:8000 central-group-migration:ci
+          sleep 8
+          curl --fail --retry 5 --retry-delay 2 \
+            http://localhost:8000/health
+          docker stop test-container
