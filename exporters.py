@@ -509,6 +509,60 @@ def import_country(central, group_name: str, group_dir: str,
 
 
 # ---------------------------------------------------------------------------
+# 7. AP Inventory  (IAP groups)
+#
+#    Saves a compact JSON array of every AP in the group:
+#    [{serial, model, name, ip}, ...]
+#
+#    Used as the source-of-truth for New Central import:
+#      - new_central_importer.get_ap_models_from_export() reads it to
+#        determine which device groups to create and which APs to assign.
+#
+#    Not used during Classic → Classic import (import_fn is a no-op).
+# ---------------------------------------------------------------------------
+
+def export_ap_inventory(central, group_name: str, group_dir: str, **_):
+    """Save AP inventory metadata for all APs in the group.
+
+    Calls GET /monitoring/v2/aps (same endpoint as the device-config and
+    ap-settings exporters) and saves the fields needed for New Central
+    device-group creation:
+      serial  — device identifier
+      model   — AP hardware model, e.g. "AP-635"
+      name    — hostname as shown in Central
+      ip      — management IP address
+
+    Saves: ap_inventory.json
+    """
+    aps = _get_aps_in_group(central, group_name)
+    if not aps:
+        print(f"    ap_inventory.json   [no APs found]")
+        return {"file": "ap_inventory.json", "status": "ok", "detail": "0 APs"}
+
+    inventory = []
+    for ap in aps:
+        serial = ap.get("serial") or ap.get("serial_number", "")
+        if not serial:
+            continue
+        inventory.append({
+            "serial": serial,
+            "model":  ap.get("model", ""),
+            "name":   ap.get("name") or ap.get("hostname", ""),
+            "ip":     ap.get("ip_address") or ap.get("ip", ""),
+        })
+
+    _save(group_dir, "ap_inventory.json", inventory)
+    print(f"    ap_inventory.json   ({len(inventory)} APs)")
+    return {"file": "ap_inventory.json", "status": "ok",
+            "detail": f"{len(inventory)} APs"}
+
+
+def import_ap_inventory(*_, **__) -> bool:
+    """No-op — ap_inventory.json is a reference artifact for New Central import only."""
+    return True
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
@@ -544,6 +598,13 @@ EXPORTERS = [
         "applies_to": {"IAP"},
         "export_fn":  export_wlans,
         "import_fn":  import_wlans,
+    },
+    {
+        "name":       "ap_inventory",
+        "applies_to": {"IAP"},
+        "export_fn":  export_ap_inventory,
+        "import_fn":  import_ap_inventory,
+        "export_only": True,   # reference artifact only; import_fn is a no-op
     },
     {
         "name":       "ap_settings",

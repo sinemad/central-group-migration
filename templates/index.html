@@ -120,6 +120,50 @@
   .json-file-title  { font-family: var(--mono); font-size: 12px; color: var(--text); flex: 1; }
   .json-file-body   { padding: 6px 20px 10px; overflow-x: auto; }
   .json-file-body.jfb-hidden { display: none; }
+
+  /* ── Target type toggle (Classic / New Central) ── */
+  .tt-toggle { display: flex; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+  .tt-btn { flex: 1; padding: 6px 8px; font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; background: none; border: none; color: var(--muted); cursor: pointer; transition: all var(--transition); }
+  .tt-btn:not(:last-child) { border-right: 1px solid var(--border); }
+  .tt-btn.active { background: var(--amber); color: #000; font-weight: 600; }
+  .tt-btn:not(.active):hover { background: var(--surface2); color: var(--text); }
+  /* ── New Central options ── */
+  .nc-options { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+  .checkbox-row { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 11px; color: var(--text); cursor: pointer; user-select: none; }
+  .checkbox-row input[type="checkbox"] { accent-color: var(--amber); flex-shrink: 0; }
+  /* ── Label pills ── */
+  .label-pill { display: inline-flex; align-items: center; gap: 3px; font-family: var(--mono); font-size: 9px; padding: 1px 6px; border-radius: 10px; text-transform: uppercase; letter-spacing: 0.06em; border: 1px solid; flex-shrink: 0; white-space: nowrap; }
+  /* ── Label assignment row ── */
+  .label-assign-row { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; padding: 8px 20px; border-top: 1px solid var(--border); background: var(--surface2); }
+  .label-assign-label { font-family: var(--mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); flex-shrink: 0; margin-right: 2px; }
+  .label-toggle-pill { display: inline-flex; align-items: center; font-family: var(--mono); font-size: 9px; padding: 2px 8px; border-radius: 10px; border: 1px solid; cursor: pointer; text-transform: uppercase; letter-spacing: 0.06em; transition: all var(--transition); white-space: nowrap; }
+  .label-toggle-pill.assigned { opacity: 1; }
+  .label-toggle-pill.unassigned { opacity: 0.35; }
+  .label-toggle-pill:hover { opacity: 1 !important; }
+  /* ── Label manager in Data sidebar ── */
+  .label-manager { padding: 14px 16px; border-bottom: 1px solid var(--border); }
+  .label-manager-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 10px; min-height: 22px; }
+  .label-delete-pill { display: inline-flex; align-items: center; gap: 3px; font-family: var(--mono); font-size: 9px; padding: 2px 6px; border-radius: 10px; text-transform: uppercase; letter-spacing: 0.06em; border: 1px solid; cursor: pointer; transition: all var(--transition); }
+  .label-delete-pill:hover { filter: brightness(1.2); }
+  .label-create-row { display: flex; gap: 6px; }
+  .label-create-input { flex: 1; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text-hi); font-family: var(--mono); font-size: 11px; padding: 5px 8px; outline: none; transition: border-color var(--transition); min-width: 0; }
+  .label-create-input:focus { border-color: var(--amber); }
+  .label-create-input::placeholder { color: var(--muted); }
+  /* ── Label filter bar in Import sidebar ── */
+  .label-filter-bar { border-bottom: 1px solid var(--border); }
+  .label-filter-header { font-family: var(--mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); padding: 6px 16px 2px; }
+  .label-filter-chips { display: flex; flex-wrap: wrap; gap: 5px; padding: 4px 16px 8px; }
+  .label-filter-chip { font-family: var(--mono); font-size: 9px; padding: 2px 8px; border-radius: 10px; border: 1px solid; cursor: pointer; text-transform: uppercase; letter-spacing: 0.06em; transition: opacity var(--transition); opacity: 0.38; }
+  .label-filter-chip.active { opacity: 1; }
+  .label-filter-clear { font-family: var(--mono); font-size: 9px; padding: 2px 8px; border-radius: 10px; border: 1px dashed var(--border); cursor: pointer; color: var(--muted); background: none; transition: all var(--transition); }
+  .label-filter-clear:hover { color: var(--red); border-color: var(--red); }
+  /* ── Import settings section ── */
+  .settings-box { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 20px; margin-bottom: 20px; }
+  .settings-box-note { font-family: var(--mono); font-size: 10px; color: var(--muted); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .setting-row { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+  .setting-row input[type="checkbox"] { accent-color: var(--amber); flex-shrink: 0; }
+  .setting-row span { font-family: var(--mono); font-size: 11px; color: var(--text); cursor: pointer; }
   .content { display: flex; flex-direction: column; overflow: hidden; }
   .panel { display: none; flex-direction: column; flex: 1; overflow: hidden; }
   .panel.active { display: flex; }
@@ -384,6 +428,13 @@
       <div class="sidebar-section">
         <div class="sidebar-label">Target Cluster</div>
         <div class="field">
+          <label>Target Type</label>
+          <div class="tt-toggle">
+            <button class="tt-btn active" id="tt-classic" onclick="setTargetType('classic')">Classic Central</button>
+            <button class="tt-btn"        id="tt-new"     onclick="setTargetType('new')">New Central</button>
+          </div>
+        </div>
+        <div class="field">
           <label>Base URL</label>
           <input id="imp-url" type="url" placeholder="https://apigw-prod2.central..."
                  oninput="saveSession('imp')" />
@@ -393,6 +444,12 @@
           <input id="imp-token" type="password" placeholder="Bearer token"
                  oninput="saveSession('imp')" />
           <div class="field-hint">Target cluster token. Must have Admin role for import.</div>
+        </div>
+        <div class="nc-options hidden" id="imp-nc-options">
+          <label class="checkbox-row">
+            <input type="checkbox" id="imp-create-dg" checked>
+            <span>Create device groups per AP model</span>
+          </label>
         </div>
         <button class="btn btn-outline btn-block mt8" onclick="loadManifest()">⬡ Load Export from Disk</button>
         <div class="error-banner" id="imp-error-banner"></div>
@@ -407,11 +464,16 @@
         <button class="btn btn-outline btn-sm" onclick="selectAllImp(true)">All</button>
         <button class="btn btn-outline btn-sm" onclick="selectAllImp(false)">None</button>
       </div>
+      <!-- Label filter — shown when labels exist and manifest is loaded -->
+      <div class="label-filter-bar hidden" id="imp-label-filter-bar">
+        <div class="label-filter-header">Filter by label</div>
+        <div class="label-filter-chips" id="imp-label-filter-chips"></div>
+      </div>
       <div class="group-list" id="imp-group-list">
         <div class="empty"><div class="empty-icon">⬡</div>Load an export to preview groups</div>
       </div>
       <div class="sidebar-section" id="imp-run-section" style="display:none">
-        <button class="btn btn-primary btn-block" onclick="runImport()">↑ Import Selected</button>
+        <button class="btn btn-primary btn-block" id="imp-run-btn" onclick="runImport()">↑ Import Selected</button>
       </div>
     </div>
 
@@ -420,6 +482,15 @@
       <div class="sidebar-section">
         <div class="sidebar-label">Exported Data on Disk</div>
         <button class="btn btn-outline btn-block" onclick="loadDataBrowser()">⟳ Refresh</button>
+      </div>
+      <div class="label-manager" id="data-label-manager">
+        <div class="sidebar-label" style="margin-bottom:8px">Labels <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;color:var(--muted)">— local only, not imported</span></div>
+        <div class="label-manager-chips" id="data-label-chips"></div>
+        <div class="label-create-row">
+          <input class="label-create-input" id="data-new-label" placeholder="New label name…" maxlength="32"
+                 onkeydown="if(event.key==='Enter')createLabel()" />
+          <button class="btn btn-outline btn-sm" onclick="createLabel()">+ Add</button>
+        </div>
       </div>
       <div class="search-bar">
         <input type="text" id="data-search" placeholder="Filter groups…" oninput="filterDataGroups()" />
@@ -467,7 +538,7 @@
     <!-- Import panel -->
     <div class="panel" id="panel-import">
       <div class="panel-header">
-        <div class="panel-title">Import — Group Configuration</div>
+        <div class="panel-title" id="imp-panel-title">Import — Group Configuration</div>
         <button class="btn btn-outline btn-sm hidden" id="imp-clear-btn" onclick="clearImportResults()">Clear</button>
       </div>
       <div class="panel-body">
@@ -479,6 +550,20 @@
           <div class="section-heading">Export Manifest</div>
           <div class="manifest-meta" id="imp-manifest-meta"></div>
         </div>
+        <!-- Import settings — Classic Central only; hidden for New Central -->
+        <div class="hidden" id="imp-settings-section">
+          <div class="section-heading">Import Settings</div>
+          <div class="settings-box">
+            <div class="settings-box-note">Group properties — always imported</div>
+            <div class="settings-grid">
+              <label class="setting-row"><input type="checkbox" class="imp-setting" value="ap_cli_config"     checked><span>AP Group CLI Config</span></label>
+              <label class="setting-row"><input type="checkbox" class="imp-setting" value="country"           checked><span>Country Code</span></label>
+              <label class="setting-row"><input type="checkbox" class="imp-setting" value="wlans"             checked><span>WLANs</span></label>
+              <label class="setting-row"><input type="checkbox" class="imp-setting" value="device_ap_configs" checked><span>Per-device AP Configs</span></label>
+              <label class="setting-row"><input type="checkbox" class="imp-setting" value="ap_settings"       checked><span>Per-AP Settings</span></label>
+            </div>
+          </div>
+        </div>
         <div class="hidden" id="imp-results">
           <div class="section-heading">Progress</div>
           <div class="progress-section">
@@ -486,11 +571,11 @@
             <div class="progress-bar"><div class="progress-fill" id="imp-prog-fill"></div></div>
           </div>
           <div class="stats">
-            <div class="stat ok">  <div class="stat-num" id="imp-n-ok">0</div>  <div class="stat-label">Created</div></div>
-            <div class="stat warn"><div class="stat-num" id="imp-n-skip">0</div><div class="stat-label">Skipped</div></div>
+            <div class="stat ok">  <div class="stat-num" id="imp-n-ok">0</div>  <div class="stat-label" id="imp-label-ok">Created</div></div>
+            <div class="stat warn"><div class="stat-num" id="imp-n-skip">0</div><div class="stat-label" id="imp-label-skip">Skipped</div></div>
             <div class="stat fail"><div class="stat-num" id="imp-n-fail">0</div><div class="stat-label">Failed</div></div>
           </div>
-          <div class="section-heading">Groups</div>
+          <div class="section-heading" id="imp-groups-heading">Groups</div>
           <div class="results-grid" id="imp-cards"></div>
           <div class="section-heading mt16">Log</div>
           <div class="log-terminal" id="imp-log"></div>
@@ -536,6 +621,11 @@
 let expGroups = [], impGroups = [], dataGroups = [], dataGroupsFiltered = [];
 let expSelected = new Set(), impSelected = new Set();
 let activeDataGroup = null, busy = false;
+let impTargetType = 'classic';
+// Label state — shared across Import and Data tabs
+let allLabels      = [];   // ["Production", "Branch", ...]
+let labelAssignments = {}; // {"GroupA": ["Production"], ...}
+let impLabelFilter = new Set(); // active filter chips in Import sidebar
 
 // ── sessionStorage — credentials persist across tab switches, cleared on window close ─
 // Keys are namespaced to avoid collisions with other apps on the same origin.
@@ -756,15 +846,31 @@ async function runExport() {
 function clearExportResults() { document.getElementById('exp-results').classList.add('hidden'); document.getElementById('exp-empty').classList.remove('hidden'); document.getElementById('exp-clear-btn').classList.add('hidden'); }
 
 // ── Import ────────────────────────────────────────────────────────────────
+
+// ── Target type selector ──────────────────────────────────────────────────
+function setTargetType(type) {
+  impTargetType = type;
+  const isNew = type === 'new';
+  document.getElementById('tt-classic').classList.toggle('active', !isNew);
+  document.getElementById('tt-new').classList.toggle('active', isNew);
+  document.getElementById('imp-nc-options').classList.toggle('hidden', !isNew);
+  document.getElementById('imp-panel-title').textContent =
+    isNew ? 'Import — New Central Migration' : 'Import — Group Configuration';
+  document.getElementById('imp-label-ok').textContent   = isNew ? 'Sites Created' : 'Created';
+  document.getElementById('imp-label-skip').textContent = isNew ? 'Already Exist' : 'Skipped';
+  document.getElementById('imp-groups-heading').textContent = isNew ? 'Sites' : 'Groups';
+  document.getElementById('imp-run-btn').textContent =
+    isNew ? '↑ Migrate to New Central' : '↑ Import Selected';
+  const manifestLoaded = !document.getElementById('imp-manifest-section').classList.contains('hidden');
+  document.getElementById('imp-settings-section').classList.toggle('hidden', isNew || !manifestLoaded);
+}
+
 async function loadManifest() {
   setStatus('busy','Loading manifest…');
   try {
-    // Use /api/groups — it returns the manifest, enriched group objects (with
-    // renamed + import_name), and is the same endpoint used by the Data tab.
     const d = await (await fetch('/api/groups')).json();
     if (!d.ok) throw new Error(d.error);
     const m = d.manifest;
-    // impGroups are enriched objects: {name, import_name, renamed, allowed_types, ...}
     impGroups    = d.groups;
     impSelected  = new Set(impGroups.map(g => g.name));
     const renamedCount = impGroups.filter(g => g.renamed).length;
@@ -776,26 +882,43 @@ async function loadManifest() {
       `<span class="manifest-key">Groups</span><span class="manifest-val">${impGroups.length}</span>` +
       (renamedCount ? `<span class="manifest-key">Renames set</span><span class="manifest-val" style="color:var(--amber)">${renamedCount}</span>` : '');
 
+    await loadLabels();
     renderImpGroups();
+    renderImpLabelFilter();
+
+    if (impTargetType === 'classic') {
+      document.getElementById('imp-settings-section').classList.remove('hidden');
+    }
+
     document.getElementById('imp-select-bar').classList.remove('hidden');
     document.getElementById('imp-run-section').style.display = '';
     document.getElementById('imp-empty').classList.add('hidden');
     setStatus('connected', `Manifest loaded — ${impGroups.length} groups`);
   } catch(e) { setStatus('error', e.message); alert('Failed: ' + e.message); }
 }
+
 function renderImpGroups() {
   const el=document.getElementById('imp-group-list');
-  if(!impGroups.length){el.innerHTML='<div class="empty"><div class="empty-icon">⬡</div>No groups</div>';return;}
-  el.innerHTML=impGroups.map(g=>{
+  const visible = impLabelFilter.size === 0
+    ? impGroups
+    : impGroups.filter(g => (labelAssignments[g.name]||[]).some(l => impLabelFilter.has(l)));
+  if(!visible.length){
+    el.innerHTML=`<div class="empty"><div class="empty-icon">⬡</div>${
+      impLabelFilter.size ? 'No groups match this label filter' : 'No groups'
+    }</div>`; return;
+  }
+  el.innerHTML=visible.map(g=>{
     const title = g.renamed ? `${g.name} → ${g.import_name}` : g.name;
     const arrow = g.renamed
       ? `<span class="rename-arrow" title="Will be imported as ${g.import_name}">→ ${g.import_name}</span>`
       : '';
+    const gLabels = labelAssignments[g.name] || [];
+    const labelPills = gLabels.map(l => labelPillHtml(l)).join('');
     return `<div class="group-item ${impSelected.has(g.name)?'selected':''}" onclick="toggleImp('${g.name}')">
       <input type="checkbox" class="group-checkbox" ${impSelected.has(g.name)?'checked':''}
              onclick="event.stopPropagation();toggleImp('${g.name}')">
       <span class="group-name" title="${title}">${g.name}</span>
-      ${arrow}${typeBadge(g.allowed_types)}
+      ${labelPills}${arrow}${typeBadge(g.allowed_types)}
     </div>`;
   }).join('');
   document.getElementById('imp-select-count').textContent=`${impSelected.size} of ${impGroups.length} selected`;
@@ -803,16 +926,23 @@ function renderImpGroups() {
 function toggleImp(n){impSelected.has(n)?impSelected.delete(n):impSelected.add(n);renderImpGroups();}
 function selectAllImp(v){impSelected=v?new Set(impGroups.map(g=>g.name)):new Set();renderImpGroups();}
 
+// ── runImport — dispatches to Classic or New Central based on target type ─
 async function runImport() {
+  if (impTargetType === 'new') { await runImportNewCentral(); }
+  else { await runImportClassic(); }
+}
+
+async function runImportClassic() {
   if(busy||!impSelected.size)return;
   const url=document.getElementById('imp-url').value.trim(), token=document.getElementById('imp-token').value.trim();
   if(!url||!token)return alert('Enter target credentials');
+  const settings=[...document.querySelectorAll('.imp-setting:checked')].map(cb=>cb.value);
   busy=true; setStatus('busy','Importing…');
   document.getElementById('imp-results').classList.remove('hidden'); document.getElementById('imp-clear-btn').classList.add('hidden');
   document.getElementById('imp-cards').innerHTML=document.getElementById('imp-log').innerHTML='';
   resetImpStats(0,0,0);
   let total=impSelected.size, done=0, nOk=0, nSkip=0, nFail=0;
-  const {op_id}=await(await fetch('/api/import',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({base_url:url,token,groups:[...impSelected]})})).json();
+  const {op_id}=await(await fetch('/api/import',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({base_url:url,token,groups:[...impSelected],import_settings:settings})})).json();
   const es=new EventSource(`/api/import/progress/${op_id}`);
   es.addEventListener('start',e=>{const d=JSON.parse(e.data);if(d.skipped&&d.skipped.length){nSkip+=d.skipped.length;d.skipped.forEach(g=>{addImpCard({group:g,status:'skip',steps:[]});log('imp-log',`${g} — already exists`,'warn');});}log('imp-log',`Importing ${d.total} groups`,'info');setProgress('imp',0,d.total||1,'Importing');});
   es.addEventListener('group_done',e=>{
@@ -820,9 +950,7 @@ async function runImport() {
     done++;
     if(d.status==='ok')nOk++;else nFail++;
     addImpCard(d);
-    const logLabel = d.renamed && d.import_name
-      ? `${d.group} → ${d.import_name}`
-      : d.group;
+    const logLabel = d.renamed && d.import_name ? `${d.group} → ${d.import_name}` : d.group;
     log('imp-log',`${logLabel} — ${d.status}`,d.status==='ok'?'ok':'err');
     setProgress('imp',done,total-nSkip,'Importing');
     resetImpStats(nOk,nSkip,nFail);
@@ -831,15 +959,88 @@ async function runImport() {
   es.addEventListener('error',e=>{try{log('imp-log','Error: '+JSON.parse(e.data).message,'err');}catch{}setStatus('error','Import failed');busy=false;es.close();});
   es.onerror=()=>{if(!busy)return;busy=false;setStatus('error','Connection lost');es.close();};
 }
+
+async function runImportNewCentral() {
+  if(busy||!impSelected.size)return;
+  const url=document.getElementById('imp-url').value.trim();
+  const token=document.getElementById('imp-token').value.trim();
+  const createDG=document.getElementById('imp-create-dg').checked;
+  if(!url||!token)return alert('Enter target credentials');
+  busy=true; setStatus('busy','Migrating to New Central…');
+  document.getElementById('imp-results').classList.remove('hidden');
+  document.getElementById('imp-clear-btn').classList.add('hidden');
+  document.getElementById('imp-cards').innerHTML=document.getElementById('imp-log').innerHTML='';
+  resetImpStats(0,0,0);
+  let total=impSelected.size, done=0, nOk=0, nSkip=0, nFail=0;
+  const {op_id}=await(await fetch('/api/import/new-central',{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({base_url:url,token,groups:[...impSelected],create_device_groups:createDG})
+  })).json();
+  const es=new EventSource(`/api/import/new-central/progress/${op_id}`);
+  es.addEventListener('start',e=>{
+    const d=JSON.parse(e.data);
+    log('imp-log',`Migrating ${d.total} groups → New Central sites`,'info');
+    if(d.existing_sites&&d.existing_sites.length) log('imp-log',`${d.existing_sites.length} sites already exist on target`,'warn');
+    setProgress('imp',0,d.total||1,'Creating sites');
+  });
+  es.addEventListener('group_done',e=>{
+    const d=JSON.parse(e.data); done++;
+    if(d.skipped){nSkip++;}else if(d.status==='ok'){nOk++;}else{nFail++;}
+    addNCImpCard(d);
+    const logLabel=d.site_name&&d.site_name!==d.group?`${d.group} → ${d.site_name}`:d.group;
+    const apInfo=d.ap_count?` (${d.ap_count} APs)`:'';
+    const statusWord=d.status==='missing'?'missing export':d.skipped?'site exists':d.status;
+    log('imp-log',`${logLabel}${apInfo} — ${statusWord}`,d.status==='ok'?'ok':d.skipped?'warn':'err');
+    setProgress('imp',done,total,'Creating sites'); resetImpStats(nOk,nSkip,nFail);
+  });
+  es.addEventListener('device_groups_start',e=>{
+    const d=JSON.parse(e.data);
+    log('imp-log',`Creating ${d.total_models} device group(s) for ${d.total_aps} APs`,'info');
+    document.getElementById('imp-prog-label').textContent='Creating device groups';
+  });
+  es.addEventListener('device_group_done',e=>{
+    const d=JSON.parse(e.data);
+    const apCount=d.serials?d.serials.length:0, failCount=d.failed_serials?d.failed_serials.length:0;
+    log('imp-log',`Device group: ${d.model} (${apCount} APs${failCount?` — ${failCount} failed`:''})`,d.ok?'ok':'warn');
+  });
+  es.addEventListener('device_groups_complete',e=>{
+    const d=JSON.parse(e.data);
+    log('imp-log',`Device groups done — ${d.ok_count} created, ${d.fail_count} failed`,d.fail_count?'warn':'ok');
+  });
+  es.addEventListener('complete',e=>{
+    const d=JSON.parse(e.data);
+    log('imp-log',`Migration complete — ${d.total} group(s) processed`,'ok');
+    setStatus('connected','New Central migration complete');
+    setProgress('imp',total,total,'Complete');
+    document.getElementById('imp-clear-btn').classList.remove('hidden');
+    busy=false; es.close();
+  });
+  es.addEventListener('error',e=>{try{log('imp-log','Error: '+JSON.parse(e.data).message,'err');}catch{}setStatus('error','Migration failed');busy=false;es.close();});
+  es.onerror=()=>{if(!busy)return;busy=false;setStatus('error','Connection lost');es.close();};
+}
+
 function addImpCard(d){
   const cls=d.status==='ok'?'ok':d.status==='skip'?'skip':'fail';
   const card=document.createElement('div');card.className=`result-card ${cls}`;
   const steps=(d.steps||[]).map(s=>`<div class="step"><div class="step-dot ${s.ok?'ok':'fail'}"></div>${s.name}</div>`).join('');
-  // Show "OriginalName → ImportName" when renamed, plain name otherwise
   const label = d.renamed && d.import_name && d.import_name !== d.group
-    ? `${d.group} <span class="rename-arrow">→ ${d.import_name}</span>`
-    : d.group;
+    ? `${d.group} <span class="rename-arrow">→ ${d.import_name}</span>` : d.group;
   card.innerHTML=`<div><div class="result-name">${label}</div>${steps?`<div class="step-list">${steps}</div>`:''}</div><div class="result-status ${cls}">${cls==='skip'?'SKIPPED':cls.toUpperCase()}</div>`;
+  document.getElementById('imp-cards').appendChild(card);
+}
+
+function addNCImpCard(d) {
+  const cls = d.status==='ok' ? (d.skipped ? 'skip' : 'ok') : 'fail';
+  const card = document.createElement('div'); card.className = `result-card ${cls}`;
+  const steps = (d.steps||[]).map(s =>
+    `<div class="step"><div class="step-dot ${s.ok?'ok':'fail'}"></div><span title="${(s.detail||'').replace(/"/g,'&quot;')}">${s.name}</span></div>`
+  ).join('');
+  const siteLabel = d.site_name && d.site_name !== d.group
+    ? `${d.group} <span class="rename-arrow">→ ${d.site_name}</span>` : d.group;
+  const apChip = d.ap_count ? `<span class="count-chip" style="margin-left:6px;font-size:9px">${d.ap_count} APs</span>` : '';
+  const idBadge = !d.skipped && d.site_id ? `<span class="count-chip" style="margin-left:4px;font-size:9px;color:var(--muted)">id ${d.site_id}</span>` : '';
+  const statusLabel = d.status==='missing' ? 'MISSING' : d.skipped ? 'EXISTS' : cls.toUpperCase();
+  card.innerHTML = `<div><div class="result-name">${siteLabel}${apChip}${idBadge}</div>${steps?`<div class="step-list">${steps}</div>`:''}</div><div class="result-status ${cls}">${statusLabel}</div>`;
   document.getElementById('imp-cards').appendChild(card);
 }
 function clearImportResults(){document.getElementById('imp-results').classList.add('hidden');document.getElementById('imp-clear-btn').classList.add('hidden');}
@@ -848,20 +1049,23 @@ function clearImportResults(){document.getElementById('imp-results').classList.a
 async function loadDataBrowser() {
   setStatus('busy','Loading exported data…');
   try {
-    const d = await (await fetch('/api/groups')).json();
-    if (!d.ok) {
+    const [dGroups, dLabels] = await Promise.all([
+      fetch('/api/groups').then(r=>r.json()),
+      fetch('/api/labels').then(r=>r.json()).catch(()=>({ok:false})),
+    ]);
+    if (!dGroups.ok) {
       document.getElementById('data-empty').classList.remove('hidden');
       document.getElementById('data-content').classList.add('hidden');
       setStatus('','No export on disk'); return;
     }
-    dataGroups = d.groups; dataGroupsFiltered = [...dataGroups]; activeDataGroup = null;
-    const m = d.manifest;
+    dataGroups = dGroups.groups; dataGroupsFiltered = [...dataGroups]; activeDataGroup = null;
+    if (dLabels.ok) { allLabels = dLabels.definitions||[]; labelAssignments = dLabels.assignments||{}; }
+    const m = dGroups.manifest;
     document.getElementById('data-manifest-meta').innerHTML = `
       <span class="manifest-key">Source cluster</span><span class="manifest-val">${m._source_cluster}</span>
       <span class="manifest-key">Exported at</span><span class="manifest-val">${m._exported_at}</span>
       <span class="manifest-key">Groups on disk</span><span class="manifest-val">${dataGroups.length}</span>`;
     const iapCount    = dataGroups.filter(g=>g.allowed_types.includes('IAP')).length;
-    const swCount     = dataGroups.filter(g=>g.allowed_types.some(t=>['ArubaSwitch','CX','MobilityController'].includes(t))).length;
     const totalWlans  = dataGroups.reduce((s,g) => s + (g.n_wlans||0), 0);
     const totalDevCfg = dataGroups.reduce((s,g) => s + (g.n_device_configs||0), 0);
     document.getElementById('data-summary-row').innerHTML = `
@@ -874,6 +1078,7 @@ async function loadDataBrowser() {
     document.getElementById('data-browse-hint').style.display = '';
     document.getElementById('data-no-selection').classList.remove('hidden');
     document.getElementById('data-group-detail').classList.add('hidden');
+    renderDataLabelManager();
     renderDataGroupList();
     setStatus('connected',`${dataGroups.length} groups on disk`);
   } catch(e) { setStatus('error',e.message); }
@@ -888,12 +1093,16 @@ function filterDataGroups() {
 function renderDataGroupList() {
   const el = document.getElementById('data-group-list');
   if (!dataGroupsFiltered.length) { el.innerHTML='<div class="empty"><div class="empty-icon">⬡</div>No matches</div>'; return; }
-  el.innerHTML = dataGroupsFiltered.map(g => `
-    <div class="group-item ${activeDataGroup===g.name?'active-browse':''}" onclick="selectDataGroup('${g.name}')">
+  el.innerHTML = dataGroupsFiltered.map(g => {
+    const gLabels = labelAssignments[g.name] || [];
+    const labelPills = gLabels.map(l => labelPillHtml(l)).join('');
+    return `<div class="group-item ${activeDataGroup===g.name?'active-browse':''}" onclick="selectDataGroup('${g.name}')">
       <span class="group-name" title="${g.renamed ? g.name+' → '+g.import_name : g.name}">${g.name}</span>
+      ${labelPills}
       ${g.renamed ? `<span class="rename-arrow" title="Will be imported as ${g.import_name}">→ ${g.import_name}</span>` : ''}
       ${typeBadge(g.allowed_types)}
-    </div>`).join('');
+    </div>`;
+  }).join('');
 }
 
 async function selectDataGroup(name) {
@@ -1017,6 +1226,21 @@ function renderGroupDetail(d) {
     </div>` : '';
 
   const detail = document.getElementById('data-group-detail');
+  // Build label assignment row
+  const groupLabels = labelAssignments[d.name] || [];
+  const labelRowHtml = allLabels.length ? `
+    <div class="label-assign-row">
+      <span class="label-assign-label">Labels</span>
+      ${allLabels.map(l => {
+        const assigned = groupLabels.includes(l);
+        const s = labelStyle(l);
+        return `<span class="label-toggle-pill ${assigned?'assigned':'unassigned'}"
+          style="background:${assigned?s.bg:'transparent'};color:${s.color};border-color:${s.border}"
+          onclick="toggleGroupLabel('${d.name}','${l}')"
+          title="${assigned?'Remove':'Add'} label">${l}</span>`;
+      }).join('')}
+    </div>` : '';
+
   detail.innerHTML = `
     <div class="group-detail-header">
       <div class="group-name-display" id="rename-display">
@@ -1042,6 +1266,7 @@ function renderGroupDetail(d) {
       </div>
       <div class="file-pills">${filesPills}</div>
     </div>
+    ${labelRowHtml}
     <div>
       <div class="prop-grid">${propHTML}</div>
       ${wlanSection}
@@ -1053,6 +1278,88 @@ function renderGroupDetail(d) {
   document.getElementById('data-no-selection').classList.add('hidden');
   detail.classList.remove('hidden');
 }
+
+// ── Labels ─────────────────────────────────────────────────────────────────
+
+const _LABEL_PALETTE = [
+  {bg:'rgba(88,166,255,0.14)', color:'var(--blue)',   border:'rgba(88,166,255,0.4)'},
+  {bg:'rgba(63,185,80,0.12)',  color:'var(--green)',  border:'rgba(63,185,80,0.35)'},
+  {bg:'rgba(240,165,0,0.12)',  color:'var(--amber)',  border:'rgba(240,165,0,0.4)'},
+  {bg:'rgba(188,140,255,0.12)',color:'var(--purple)', border:'rgba(188,140,255,0.4)'},
+  {bg:'rgba(248,81,73,0.1)',   color:'var(--red)',    border:'rgba(248,81,73,0.4)'},
+  {bg:'rgba(121,192,255,0.12)',color:'#79c0ff',       border:'rgba(121,192,255,0.35)'},
+];
+function labelStyle(name) {
+  let h = 0;
+  for (const c of name) h = (h * 31 + c.charCodeAt(0)) & 0xffff;
+  return _LABEL_PALETTE[h % _LABEL_PALETTE.length];
+}
+function labelPillHtml(name) {
+  const s = labelStyle(name);
+  return `<span class="label-pill" style="background:${s.bg};color:${s.color};border-color:${s.border}">${name}</span>`;
+}
+async function loadLabels() {
+  try {
+    const d = await fetch('/api/labels').then(r => r.json());
+    if (!d.ok) return;
+    allLabels = d.definitions || []; labelAssignments = d.assignments || {};
+  } catch {}
+}
+function renderDataLabelManager() {
+  const chips = document.getElementById('data-label-chips'); if (!chips) return;
+  if (!allLabels.length) { chips.innerHTML = '<span style="font-family:var(--mono);font-size:10px;color:var(--muted)">No labels yet</span>'; return; }
+  chips.innerHTML = allLabels.map(name => {
+    const s = labelStyle(name);
+    return `<span class="label-delete-pill" style="background:${s.bg};color:${s.color};border-color:${s.border}" onclick="deleteLabel('${name}')" title="Delete label '${name}'">${name} <span style="opacity:0.55">×</span></span>`;
+  }).join('');
+}
+async function createLabel() {
+  const input = document.getElementById('data-new-label');
+  const name  = input.value.trim(); if (!name) return;
+  try {
+    const d = await fetch('/api/labels', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name})}).then(r=>r.json());
+    if (!d.ok) { alert('Failed: '+d.error); return; }
+    allLabels = d.definitions; input.value = '';
+    renderDataLabelManager(); renderDataGroupList(); renderImpLabelFilter();
+    if (activeDataGroup) selectDataGroup(activeDataGroup);
+    setStatus('connected', `Label created: ${name}`);
+  } catch(e) { alert(e.message); }
+}
+async function deleteLabel(name) {
+  if (!confirm(`Delete label "${name}"?\nIt will be removed from all groups.`)) return;
+  try {
+    const d = await fetch(`/api/labels/${encodeURIComponent(name)}`,{method:'DELETE'}).then(r=>r.json());
+    if (!d.ok) { alert('Failed: '+d.error); return; }
+    allLabels = d.definitions; labelAssignments = d.assignments; impLabelFilter.delete(name);
+    renderDataLabelManager(); renderDataGroupList(); renderImpLabelFilter(); renderImpGroups();
+    if (activeDataGroup) selectDataGroup(activeDataGroup);
+    setStatus('connected', `Label deleted: ${name}`);
+  } catch(e) { alert(e.message); }
+}
+async function toggleGroupLabel(groupName, label) {
+  const current = labelAssignments[groupName] || [];
+  const newLabels = current.includes(label) ? current.filter(l=>l!==label) : [...current, label];
+  try {
+    const d = await fetch(`/api/groups/${encodeURIComponent(groupName)}/labels`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({labels:newLabels})}).then(r=>r.json());
+    if (!d.ok) { alert('Failed: '+d.error); return; }
+    labelAssignments[groupName] = d.labels;
+    for (const cache of [dataGroups, dataGroupsFiltered]) { const g=cache.find(x=>x.name===groupName); if(g) g.labels=d.labels; }
+    renderDataGroupList(); renderImpGroups();
+    if (activeDataGroup === groupName) selectDataGroup(groupName);
+  } catch(e) { alert(e.message); }
+}
+function renderImpLabelFilter() {
+  const bar=document.getElementById('imp-label-filter-bar'), chips=document.getElementById('imp-label-filter-chips');
+  if (!allLabels.length) { bar.classList.add('hidden'); return; }
+  bar.classList.remove('hidden');
+  chips.innerHTML = allLabels.map(name => {
+    const s=labelStyle(name), active=impLabelFilter.has(name);
+    return `<span class="label-filter-chip ${active?'active':''}" style="background:${active?s.bg:'transparent'};color:${s.color};border-color:${s.border}" onclick="toggleLabelFilter('${name}')">${name}</span>`;
+  }).join('') + (impLabelFilter.size ? `<button class="label-filter-clear" onclick="clearLabelFilter()">✕ clear</button>` : '');
+}
+function toggleLabelFilter(label) { if(impLabelFilter.has(label))impLabelFilter.delete(label);else impLabelFilter.add(label); renderImpLabelFilter(); renderImpGroups(); }
+function clearLabelFilter() { impLabelFilter.clear(); renderImpLabelFilter(); renderImpGroups(); }
+
 // ── Rename editor ─────────────────────────────────────────────────────────
 
 function openRenameEditor() {
