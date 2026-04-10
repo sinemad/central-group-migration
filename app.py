@@ -59,7 +59,15 @@ def _load(group_dir: str, filename: str):
     if not os.path.exists(p):
         return None
     with open(p) as f:
-        return json.load(f)
+        data = json.load(f)
+    # Handle double-encoded JSON — file content is a JSON-serialised string
+    # rather than a parsed object. Unwrap it transparently.
+    if isinstance(data, str):
+        try:
+            data = json.loads(data)
+        except (json.JSONDecodeError, ValueError):
+            pass
+    return data
 
 
 def _read_manifest() -> dict | None:
@@ -769,9 +777,30 @@ def get_group(group_name):
     cli_config = cli_raw.get("cli_config", []) if cli_raw else None
 
     # WLAN detail
-    wlans      = _load(gdir, "wlans.json") or []
+    wlans = _load(gdir, "wlans.json") or []
 
-    # Per-device counts
+    # Guard against double-encoded JSON — some Central clusters return a JSON
+    # string (the entire payload wrapped in quotes) rather than a JSON object.
+    # _load() would give us a Python str in that case; unwrap it.
+    if isinstance(wlans, str):
+        try:
+            wlans = json.loads(wlans)
+        except (json.JSONDecodeError, ValueError):
+            wlans = []
+    # Same guard for individual list items
+    if isinstance(wlans, list):
+        decoded = []
+        for w in wlans:
+            if isinstance(w, str):
+                try:
+                    decoded.append(json.loads(w))
+                except (json.JSONDecodeError, ValueError):
+                    decoded.append(w)
+            else:
+                decoded.append(w)
+        wlans = decoded
+
+    # Per-device counts (serial lists — kept for backward compat)
     dev_dir  = os.path.join(gdir, "device_ap_configs")
     sett_dir = os.path.join(gdir, "ap_settings")
     device_configs = [
@@ -783,19 +812,38 @@ def get_group(group_name):
         if f.endswith(".json")
     ] if os.path.isdir(sett_dir) else []
 
+    # Full JSON data for the collapsible tree viewer in the Data tab
+    device_configs_data = []
+    if os.path.isdir(dev_dir):
+        for fname in sorted(os.listdir(dev_dir)):
+            if fname.endswith(".json"):
+                data = _load(dev_dir, fname)
+                if data:
+                    device_configs_data.append(data)
+
+    ap_settings_data = []
+    if os.path.isdir(sett_dir):
+        for fname in sorted(os.listdir(sett_dir)):
+            if fname.endswith(".json"):
+                data = _load(sett_dir, fname)
+                if data:
+                    ap_settings_data.append(data)
+
     return jsonify({
-        "ok":                   True,
-        "name":                 group_name,
-        "import_name":          renames.get(group_name, group_name),
-        "renamed":              group_name in renames,
-        "properties":           props,
-        "country":              country.get("country", ""),
-        "cli_config":           cli_config,
-        "wlans":                wlans,
-        "n_wlans":              len(wlans),
+        "ok":                    True,
+        "name":                  group_name,
+        "import_name":           renames.get(group_name, group_name),
+        "renamed":               group_name in renames,
+        "properties":            props,
+        "country":               country.get("country", ""),
+        "cli_config":            cli_config,
+        "wlans":                 wlans,
+        "n_wlans":               len(wlans),
         "device_config_serials": device_configs,
-        "n_device_configs":     len(device_configs),
-        "n_ap_settings":        len(ap_settings_serials),
+        "n_device_configs":      len(device_configs),
+        "n_ap_settings":         len(ap_settings_serials),
+        "device_configs_data":   device_configs_data,
+        "ap_settings_data":      ap_settings_data,
     })
 
 

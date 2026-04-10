@@ -77,6 +77,49 @@
   .search-bar input { width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text-hi); font-family: var(--mono); font-size: 12px; padding: 6px 10px; outline: none; transition: border-color var(--transition); }
   .search-bar input:focus { border-color: var(--blue); }
   .browse-hint { font-family: var(--mono); font-size: 10px; color: var(--muted); padding: 8px 20px; border-bottom: 1px solid var(--border); text-align: center; display: none; }
+  /* ── JSON pretty-print viewer ─────────────────────────────────────── */
+  .jt-tog      { cursor: pointer; color: var(--muted); font-size: 9px; user-select: none;
+                 display: inline-block; width: 10px; text-align: center; vertical-align: middle;
+                 margin-right: 2px; transition: color var(--transition); }
+  .jt-tog:hover { color: var(--amber); }
+  .json-pretty { margin: 0; font-family: var(--mono); font-size: 12px; line-height: 1.65;
+                 white-space: pre; overflow-x: auto; color: var(--text);
+                 background: var(--bg); padding: 12px 16px; border-radius: var(--radius); }
+  .jv-key  { color: var(--blue); }
+  .jv-str  { color: var(--green); }
+  .jv-num  { color: var(--purple); }
+  .jv-bool { color: var(--amber); }
+  .jv-null { color: var(--muted); font-style: italic; }
+  .jv-punc { color: var(--muted); }
+  /* ── Aruba versioned-field indicators ─────────────────────────────── */
+  .af-dot       { font-size: 7px; vertical-align: middle; margin-right: 3px; line-height: 1; }
+  .af-ok        { color: var(--green); }
+  .af-disabled  { color: var(--muted); }
+  .af-warn      { color: var(--amber); font-size: 9px; }
+  .af-stat      { font-family: var(--mono); font-size: 10px; padding: 1px 6px;
+                  border-radius: 2px; margin-left: 2px; flex-shrink: 0; }
+  .af-stat-dis  { background: rgba(110,118,129,0.15); color: var(--muted); }
+  .af-stat-warn { background: rgba(240,165,0,0.12);   color: var(--amber); }
+  .json-raw-btn { font-family: var(--mono); font-size: 10px; padding: 1px 7px;
+                  background: transparent; border: 1px solid var(--border);
+                  color: var(--muted); border-radius: 2px; cursor: pointer;
+                  margin-left: 4px; flex-shrink: 0;
+                  transition: color var(--transition), border-color var(--transition); }
+  .json-raw-btn:hover { color: var(--amber); border-color: var(--amber); }
+  /* ── JSON file accordion sections ─────────────────────────────────── */
+  .json-files-outer { border-top: 1px solid var(--border); }
+  .json-file-section { border-top: 1px solid var(--border); }
+  .json-file-section:first-child { border-top: none; }
+  .json-file-header {
+    display: flex; align-items: center; gap: 8px; padding: 9px 20px;
+    cursor: pointer; user-select: none; transition: background var(--transition);
+  }
+  .json-file-header:hover { background: var(--surface2); }
+  .json-sub-header  { padding-left: 36px; background: var(--bg); }
+  .json-sub-header:hover { background: var(--surface); }
+  .json-file-title  { font-family: var(--mono); font-size: 12px; color: var(--text); flex: 1; }
+  .json-file-body   { padding: 6px 20px 10px; overflow-x: auto; }
+  .json-file-body.jfb-hidden { display: none; }
   .content { display: flex; flex-direction: column; overflow: hidden; }
   .panel { display: none; flex-direction: column; flex: 1; overflow: hidden; }
   .panel.active { display: flex; }
@@ -905,13 +948,15 @@ function renderGroupDetail(d) {
   if (hasIAP) {
     const wlanRows = wlans.length
       ? wlans.map(w => {
-          const name   = w.essid || w.wlan_name || w.name || '—';
-          const vlan   = w.vlan || '—';
-          const hidden = w.hide_ssid ? '<span style="color:var(--muted)">hidden</span>' : 'visible';
-          const secCls = wlanSecClass(w);
-          const secLbl = (w.opmode||w.type||w.security||'open').replace(/_/g,' ');
-          const bwU    = w.bandwidth_limit_up    || '—';
-          const bwD    = w.bandwidth_limit_down  || '—';
+          // Full WLAN export wraps fields under a 'wlan' key; summary format is flat.
+          const wl     = w.wlan || w;
+          const name   = wl.essid || wl.wlan_name || wl.name || '—';
+          const vlan   = wl.vlan || '—';
+          const hidden = wl.hide_ssid ? '<span style="color:var(--muted)">hidden</span>' : 'visible';
+          const secCls = wlanSecClass(wl);
+          const secLbl = (wl.opmode||wl.type||wl.security||'open').replace(/_/g,' ');
+          const bwU    = wl.bandwidth_limit_up    || '—';
+          const bwD    = wl.bandwidth_limit_down  || '—';
           return `<tr>
             <td>${name}</td>
             <td><span class="wlan-badge ${secCls}">${secLbl}</span></td>
@@ -1002,6 +1047,7 @@ function renderGroupDetail(d) {
       ${wlanSection}
       ${deviceSection}
       ${cliSection}
+      ${buildJsonSections(d, files)}
     </div>`;
 
   document.getElementById('data-no-selection').classList.add('hidden');
@@ -1081,6 +1127,231 @@ async function clearRename(groupName) {
   } catch(err) {
     setStatus('error', err.message);
   }
+}
+
+// ── JSON tree viewer ──────────────────────────────────────────────────────
+let _jtSeq = 0;
+function _jtId() { return `jn${++_jtSeq}`; }
+
+function _escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// Syntax-highlight a JSON value as pretty-printed indented text.
+// Produces the same indented output as JSON.stringify(data, null, 2)
+// with <span> classes applied to keys, strings, numbers, booleans and nulls.
+function syntaxHighlightJson(data) {
+  const raw = JSON.stringify(data, null, 2);
+  // Escape HTML first so angle brackets in values don't break the markup,
+  // then apply color spans via regex.
+  return _escHtml(raw).replace(
+    /("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g,
+    match => {
+      if (/^"/.test(match)) {
+        // Key (ends with colon after the closing quote)
+        if (/:$/.test(match)) return `<span class="jv-key">${match}</span>`;
+        // String value
+        return `<span class="jv-str">${match}</span>`;
+      }
+      if (/true|false/.test(match)) return `<span class="jv-bool">${match}</span>`;
+      if (/null/.test(match))       return `<span class="jv-null">${match}</span>`;
+      return `<span class="jv-num">${match}</span>`;
+    }
+  );
+}
+
+function toggleJsonFile(id) {
+  const body = document.getElementById(id); if (!body) return;
+  const hiding = !body.classList.contains('jfb-hidden');
+  body.classList.toggle('jfb-hidden', hiding);
+  const hdr = body.previousElementSibling;
+  const tog = hdr && hdr.querySelector('.jt-tog');
+  if (tog) tog.textContent = hiding ? '▶' : '▼';
+}
+
+// ── Aruba versioned-field helpers ─────────────────────────────────────────
+// Aruba Central wraps many settings in {enable, warn_on_change, version, value}.
+// isArubaField detects these wrappers so the smart view can flatten them to a
+// single line with a status indicator instead of four lines of metadata noise.
+
+function isArubaField(v) {
+  return v !== null && typeof v === 'object' && !Array.isArray(v)
+    && 'value' in v && 'enable' in v && 'warn_on_change' in v;
+}
+
+// Return a colored dot span for an Aruba versioned field.
+//   green ●  — active on this firmware
+//   grey  ●  — disabled (requires a newer firmware version)
+//   amber ⚠  — active but changing this value triggers a warning
+function arubaIndicator(v) {
+  if (!v.enable)
+    return `<span class="af-dot af-disabled" title="Disabled — requires firmware ${_escHtml(v.version||'')}">●</span>`;
+  if (v.warn_on_change)
+    return `<span class="af-dot af-warn" title="Warn on change">⚠</span>`;
+  return `<span class="af-dot af-ok" title="Active">●</span>`;
+}
+
+// Walk the data tree and count Aruba fields by state.
+// Returns { disabled, warned } for the validation badge row.
+function arubaStats(data) {
+  let disabled = 0, warned = 0;
+  function walk(v) {
+    if (!v || typeof v !== 'object') return;
+    if (Array.isArray(v)) { v.forEach(walk); return; }
+    if (isArubaField(v)) {
+      if (!v.enable)             disabled++;
+      else if (v.warn_on_change) warned++;
+      walk(v.value);
+      return;
+    }
+    Object.values(v).forEach(walk);
+  }
+  walk(data);
+  return { disabled, warned };
+}
+
+// Syntax-color a single scalar value (used for Aruba .value fields).
+function renderSmartVal(v) {
+  if (v === null)             return `<span class="jv-null">null</span>`;
+  if (typeof v === 'boolean') return `<span class="jv-bool">${v}</span>`;
+  if (typeof v === 'number')  return `<span class="jv-num">${v}</span>`;
+  if (typeof v === 'string')  return `<span class="jv-str">"${_escHtml(v)}"</span>`;
+  return syntaxHighlightJson(v);   // nested object/array inside a value field
+}
+
+// Render JSON with Aruba versioned fields flattened to one line each.
+// Output is plain text + <span> tags suitable for a <pre> block.
+function renderSmartJson(obj, depth) {
+  const pad  = '  '.repeat(depth);
+  const pad1 = '  '.repeat(depth + 1);
+
+  if (obj === null)             return `<span class="jv-null">null</span>`;
+  if (typeof obj === 'boolean') return `<span class="jv-bool">${obj}</span>`;
+  if (typeof obj === 'number')  return `<span class="jv-num">${obj}</span>`;
+  if (typeof obj === 'string')  return `<span class="jv-str">"${_escHtml(obj)}"</span>`;
+
+  if (Array.isArray(obj)) {
+    if (!obj.length) return `<span class="jv-punc">[]</span>`;
+    const items = obj.map(v => `${pad1}${renderSmartJson(v, depth + 1)}`).join(',\n');
+    return `<span class="jv-punc">[</span>\n${items}\n${pad}<span class="jv-punc">]</span>`;
+  }
+
+  if (typeof obj === 'object') {
+    const keys = Object.keys(obj);
+    if (!keys.length) return `<span class="jv-punc">{}</span>`;
+    const lines = keys.map(k => {
+      const v     = obj[k];
+      const kHtml = `<span class="jv-key">"${_escHtml(k)}"</span><span class="jv-punc">:</span>`;
+      if (isArubaField(v))
+        return `${pad1}${arubaIndicator(v)}${kHtml} ${renderSmartVal(v.value)}`;
+      return `${pad1}${kHtml} ${renderSmartJson(v, depth + 1)}`;
+    }).join(',\n');
+    return `<span class="jv-punc">{</span>\n${lines}\n${pad}<span class="jv-punc">}</span>`;
+  }
+
+  return _escHtml(String(obj));
+}
+
+// Toggle between smart (flattened Aruba) and raw (full JSON.stringify) views.
+// btn label reflects the *inactive* mode — what you'll switch to on click.
+function toggleRawView(id, btn) {
+  const smart = document.getElementById(`${id}s`);
+  const raw   = document.getElementById(`${id}r`);
+  if (!smart || !raw) return;
+  const showingRaw = raw.style.display !== 'none';
+  smart.style.display = showingRaw ? '' : 'none';
+  raw.style.display   = showingRaw ? 'none' : '';
+  if (btn) btn.textContent = showingRaw ? 'raw' : 'smart';
+}
+
+function _jfSection(title, data, open, indent) {
+  // Guard: if data arrived as a double-encoded JSON string, unwrap it
+  if (typeof data === 'string') { try { data = JSON.parse(data); } catch(e) {} }
+  const id     = `jsf${_jtId()}`;
+  const cls    = open ? '' : ' jfb-hidden';
+  const hdr    = indent ? 'json-file-header json-sub-header' : 'json-file-header';
+  const stats  = arubaStats(data);
+  const badges = [
+    stats.disabled ? `<span class="af-stat af-stat-dis">${stats.disabled} disabled</span>` : '',
+    stats.warned   ? `<span class="af-stat af-stat-warn">${stats.warned} warned</span>`    : '',
+  ].filter(Boolean).join('');
+  return `
+    <div class="json-file-section">
+      <div class="${hdr}" onclick="toggleJsonFile('${id}')">
+        <span class="jt-tog">${open ? '▼' : '▶'}</span>
+        <span class="json-file-title">${_escHtml(title)}</span>
+        ${badges}
+        <button class="json-raw-btn" onclick="event.stopPropagation();toggleRawView('${id}',this)" title="Switch between smart and raw JSON">raw</button>
+      </div>
+      <div id="${id}" class="json-file-body${cls}">
+        <pre id="${id}s" class="json-pretty">${renderSmartJson(data, 0)}</pre>
+        <pre id="${id}r" class="json-pretty" style="display:none">${syntaxHighlightJson(data)}</pre>
+      </div>
+    </div>`;
+}
+
+function _jfGroup(title, count, inner, open) {
+  const id  = `jsg${_jtId()}`;
+  const cls = open ? '' : ' jfb-hidden';
+  return `
+    <div class="json-file-section">
+      <div class="json-file-header" onclick="toggleJsonFile('${id}')">
+        <span class="jt-tog">${open ? '▼' : '▶'}</span>
+        <span class="json-file-title">${_escHtml(title)}</span>
+        <span class="count-chip">${count}</span>
+      </div>
+      <div id="${id}" class="json-file-body${cls}">${inner}</div>
+    </div>`;
+}
+
+function buildJsonSections(d, files) {
+  let s = '';
+
+  // properties.json
+  if (d.properties && Object.keys(d.properties).length)
+    s += _jfSection('properties.json', d.properties, false, false);
+
+  // country.json
+  if (d.country)
+    s += _jfSection('country.json', { country: d.country }, false, false);
+
+  // wlans.json — one sub-section per WLAN
+  if (d.wlans && d.wlans.length) {
+    const inner = d.wlans.map(w => {
+      // Full export wraps under 'wlan' key; summary format is flat
+      const wl  = w.wlan || w;
+      const lbl = wl.essid || wl.name || wl.wlan_name || '(unnamed)';
+      return _jfSection(lbl, w, false, true);
+    }).join('');
+    s += _jfGroup('wlans.json', d.wlans.length, inner, false);
+  }
+
+  // device_ap_configs/ — one sub-section per AP serial
+  if (d.device_configs_data && d.device_configs_data.length) {
+    const inner = d.device_configs_data.map(dev => {
+      const lbl = [dev.serial, dev.name].filter(Boolean).join('  —  ');
+      return _jfSection(lbl || '(device)', dev, false, true);
+    }).join('');
+    s += _jfGroup('device_ap_configs/', d.device_configs_data.length, inner, false);
+  }
+
+  // ap_settings/ — one sub-section per AP serial
+  if (d.ap_settings_data && d.ap_settings_data.length) {
+    const inner = d.ap_settings_data.map(ap =>
+      _jfSection(ap.serial || ap.hostname || '(AP)', ap, false, true)
+    ).join('');
+    s += _jfGroup('ap_settings/', d.ap_settings_data.length, inner, false);
+  }
+
+  if (!s) return '';
+  return `
+    <div class="json-files-outer">
+      <div class="detail-section-header">
+        <span>Exported JSON Files</span>
+        <span class="count-chip">${files.length}</span>
+      </div>
+      ${s}
+    </div>`;
 }
 
 </script>
