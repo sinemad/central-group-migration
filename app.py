@@ -23,6 +23,9 @@ CORS(app)
 EXPORT_DIR = os.path.join(os.path.dirname(__file__), "exports")
 os.makedirs(EXPORT_DIR, exist_ok=True)
 
+BACKUP_DIR = os.environ.get("BACKUP_DIR", os.path.join(os.path.dirname(__file__), "backups"))
+os.makedirs(BACKUP_DIR, exist_ok=True)
+
 _progress_queues: dict[str, queue.Queue] = {}
 
 
@@ -1013,6 +1016,85 @@ def debug_group(group_name):
         import traceback
         return jsonify({"ok": False, "error": str(e),
                         "traceback": traceback.format_exc()}), 500
+
+
+@app.route("/api/backups")
+def list_backups():
+    backups = []
+    try:
+        for fname in sorted(os.listdir(BACKUP_DIR), reverse=True):
+            if not fname.endswith(".tar.gz"):
+                continue
+            p = os.path.join(BACKUP_DIR, fname)
+            stat = os.stat(p)
+            backups.append({
+                "filename": fname,
+                "size": stat.st_size,
+                "created_at": datetime.utcfromtimestamp(stat.st_mtime).isoformat() + "Z",
+            })
+    except OSError:
+        pass
+    return jsonify({"ok": True, "backups": backups, "backup_dir": BACKUP_DIR})
+
+
+@app.route("/api/backup", methods=["POST"])
+def create_backup():
+    import tarfile
+    if not os.path.exists(os.path.join(EXPORT_DIR, "manifest.json")):
+        return jsonify({"ok": False, "error": "No export found to back up — run an export first"}), 400
+
+    ts = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+    filename = f"exports_{ts}.tar.gz"
+    dest = os.path.join(BACKUP_DIR, filename)
+
+    with tarfile.open(dest, "w:gz") as tar:
+        tar.add(EXPORT_DIR, arcname="exports")
+
+    size = os.path.getsize(dest)
+    return jsonify({"ok": True, "filename": filename, "size": size})
+
+
+@app.route("/api/restore", methods=["POST"])
+def restore_backup():
+    import tarfile
+    import shutil
+    body = request.json or {}
+    filename = os.path.basename(body.get("filename", ""))
+    if not filename or not filename.endswith(".tar.gz"):
+        return jsonify({"ok": False, "error": "Invalid filename"}), 400
+
+    src = os.path.join(BACKUP_DIR, filename)
+    if not os.path.exists(src):
+        return jsonify({"ok": False, "error": "Backup not found"}), 404
+
+    real_export = os.path.realpath(EXPORT_DIR)
+
+    for item in os.listdir(EXPORT_DIR):
+        p = os.path.join(EXPORT_DIR, item)
+        shutil.rmtree(p) if os.path.isdir(p) else os.remove(p)
+
+    with tarfile.open(src, "r:gz") as tar:
+        for member in tar.getmembers():
+            parts = member.name.split("/", 1)
+            if len(parts) < 2 or not parts[1]:
+                continue
+            member.name = parts[1]
+            target = os.path.realpath(os.path.join(real_export, member.name))
+            if not target.startswith(real_export + os.sep) and target != real_export:
+                continue
+            tar.extract(member, EXPORT_DIR)
+
+    return jsonify({"ok": True, "filename": filename})
+
+
+@app.route("/api/backups/<filename>", methods=["DELETE"])
+def delete_backup(filename):
+    filename = os.path.basename(filename)
+    path = os.path.join(BACKUP_DIR, filename)
+    if not os.path.exists(path):
+        return jsonify({"ok": False, "error": "Backup not found"}), 404
+    os.remove(path)
+    return jsonify({"ok": True})
 
 
 @app.route("/health")

@@ -8,19 +8,19 @@
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg:        #0d1117;
-    --surface:   #161b22;
-    --surface2:  #1c2128;
-    --border:    #2d3642;
-    --amber:     #f0a500;
-    --amber-dim: #7a5200;
-    --green:     #3fb950;
-    --red:       #f85149;
-    --blue:      #58a6ff;
-    --purple:    #bc8cff;
-    --muted:     #6e7681;
-    --text:      #c9d1d9;
-    --text-hi:   #f0f6fc;
+    --bg:        #ffffff;
+    --surface:   #f6f8fa;
+    --surface2:  #eaeef2;
+    --border:    #d0d7de;
+    --amber:     #0969da;
+    --amber-dim: #54aeff;
+    --green:     #1a7f37;
+    --red:       #cf222e;
+    --blue:      #0969da;
+    --purple:    #8250df;
+    --muted:     #57606a;
+    --text:      #24292f;
+    --text-hi:   #1f2328;
     --mono:      'IBM Plex Mono', monospace;
     --sans:      'IBM Plex Sans', sans-serif;
     --radius:    4px;
@@ -54,8 +54,8 @@
   input::placeholder { color: var(--muted); }
   .btn { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; padding: 7px 14px; border-radius: var(--radius); border: 1px solid; cursor: pointer; transition: all var(--transition); white-space: nowrap; }
   .btn:disabled { opacity: 0.35; cursor: not-allowed; }
-  .btn-primary { background: var(--amber); border-color: var(--amber); color: #000; font-weight: 600; }
-  .btn-primary:not(:disabled):hover { background: #ffc107; border-color: #ffc107; }
+  .btn-primary { background: var(--amber); border-color: var(--amber); color: #fff; font-weight: 600; }
+  .btn-primary:not(:disabled):hover { background: #0757ba; border-color: #0757ba; }
   .btn-outline { background: transparent; border-color: var(--border); color: var(--text); }
   .btn-outline:not(:disabled):hover { border-color: var(--amber); color: var(--amber); }
   .btn-sm { padding: 4px 10px; font-size: 10px; }
@@ -63,14 +63,14 @@
   .group-list { flex: 1; overflow-y: auto; }
   .group-item { display: flex; align-items: center; gap: 10px; padding: 9px 20px; cursor: pointer; transition: background var(--transition); }
   .group-item:hover { background: var(--surface2); }
-  .group-item.selected { background: rgba(240,165,0,0.08); }
+  .group-item.selected { background: rgba(9,105,218,0.08); }
   .group-item.active-browse { background: rgba(88,166,255,0.1); border-left: 2px solid var(--blue); padding-left: 18px; }
   .group-checkbox { width: 14px; height: 14px; accent-color: var(--amber); flex-shrink: 0; }
   .group-name { font-family: var(--mono); font-size: 12px; color: var(--text-hi); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .type-badge { font-family: var(--mono); font-size: 9px; padding: 1px 5px; border-radius: 2px; text-transform: uppercase; letter-spacing: 0.06em; flex-shrink: 0; }
   .type-iap   { background: rgba(88,166,255,0.15); color: var(--blue);  border: 1px solid rgba(88,166,255,0.3); }
   .type-sw    { background: rgba(63,185,80,0.12);  color: var(--green); border: 1px solid rgba(63,185,80,0.25); }
-  .type-mixed { background: rgba(240,165,0,0.1);   color: var(--amber); border: 1px solid rgba(240,165,0,0.25); }
+  .type-mixed { background: rgba(9,105,218,0.1);   color: var(--amber); border: 1px solid rgba(9,105,218,0.25); }
   .select-bar { display: flex; gap: 8px; padding: 10px 20px; border-bottom: 1px solid var(--border); align-items: center; }
   .select-count { font-family: var(--mono); font-size: 10px; color: var(--muted); flex: 1; }
   .search-bar { padding: 10px 16px; border-bottom: 1px solid var(--border); }
@@ -99,7 +99,7 @@
   .af-stat      { font-family: var(--mono); font-size: 10px; padding: 1px 6px;
                   border-radius: 2px; margin-left: 2px; flex-shrink: 0; }
   .af-stat-dis  { background: rgba(110,118,129,0.15); color: var(--muted); }
-  .af-stat-warn { background: rgba(240,165,0,0.12);   color: var(--amber); }
+  .af-stat-warn { background: rgba(9,105,218,0.12);   color: var(--amber); }
   .json-raw-btn { font-family: var(--mono); font-size: 10px; padding: 1px 7px;
                   background: transparent; border: 1px solid var(--border);
                   color: var(--muted); border-radius: 2px; cursor: pointer;
@@ -125,7 +125,7 @@
   .tt-toggle { display: flex; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
   .tt-btn { flex: 1; padding: 6px 8px; font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; background: none; border: none; color: var(--muted); cursor: pointer; transition: all var(--transition); }
   .tt-btn:not(:last-child) { border-right: 1px solid var(--border); }
-  .tt-btn.active { background: var(--amber); color: #000; font-weight: 600; }
+  .tt-btn.active { background: var(--amber); color: #fff; font-weight: 600; }
   .tt-btn:not(.active):hover { background: var(--surface2); color: var(--text); }
   /* ── New Central options ── */
   .nc-options { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
@@ -192,7 +192,7 @@
   .cli-block { font-family: var(--mono); font-size: 11.5px; line-height: 1.65; padding: 16px 20px; color: var(--text); white-space: pre; overflow-x: auto; max-height: 420px; overflow-y: auto; background: var(--bg); tab-size: 4; }
   .cli-kw      { color: var(--blue); }
   .cli-val     { color: var(--green); }
-  .cli-str     { color: #a5d6ff; }
+  .cli-str     { color: #0a6ebd; }
   .cli-num     { color: var(--purple); }
   .cli-comment { color: var(--muted); font-style: italic; }
   .cli-key     { color: var(--amber); }
@@ -214,6 +214,12 @@
   .wlan-wpa2     { background: rgba(88,166,255,0.1); color: var(--blue);  border: 1px solid rgba(88,166,255,0.3); }
   .wlan-wpa3     { background: rgba(188,140,255,0.1);color: var(--purple);border: 1px solid rgba(188,140,255,0.3); }
   .wlan-other    { background: rgba(110,118,129,0.1);color: var(--muted); border: 1px solid var(--border); }
+  /* ── Backup list ── */
+  .bk-table { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 11px; margin-bottom: 16px; }
+  .bk-table th { text-align: left; padding: 7px 16px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); border-bottom: 1px solid var(--border); background: var(--surface2); }
+  .bk-table td { padding: 8px 16px; border-bottom: 1px solid var(--border); color: var(--text); vertical-align: middle; }
+  .bk-table tr:last-child td { border-bottom: none; }
+  .bk-table tr:hover td { background: var(--surface2); }
   .detail-section { border-top: 1px solid var(--border); }
   .detail-section-header { padding: 10px 20px; font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); background: var(--surface2); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
   .count-chip { font-family: var(--mono); font-size: 10px; padding: 1px 8px; border-radius: 10px; background: var(--surface); border: 1px solid var(--border); color: var(--text); }
@@ -223,7 +229,7 @@
     display: inline-flex; align-items: center; gap: 5px;
     font-family: var(--mono); font-size: 10px;
     padding: 2px 8px; border-radius: 2px;
-    background: rgba(240,165,0,0.1); border: 1px solid rgba(240,165,0,0.3);
+    background: rgba(9,105,218,0.1); border: 1px solid rgba(9,105,218,0.3);
     color: var(--amber);
   }
   .rename-badge .arr { opacity: 0.6; }
@@ -268,7 +274,7 @@
   .result-files { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 5px; }
   .result-file  { font-family: var(--mono); font-size: 10px; padding: 1px 6px; border-radius: 2px; background: var(--surface2); border: 1px solid var(--border); color: var(--muted); }
   .result-file.ok   { color: var(--green); border-color: rgba(63,185,80,0.3);  background: rgba(63,185,80,0.08); }
-  .result-file.warn { color: var(--amber); border-color: rgba(240,165,0,0.3);  background: rgba(240,165,0,0.08); }
+  .result-file.warn { color: var(--amber); border-color: rgba(9,105,218,0.3);  background: rgba(9,105,218,0.08); }
   .result-status { font-family: var(--mono); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; }
   .result-status.ok   { color: var(--green); }
   .result-status.warn { color: var(--amber); }
@@ -327,7 +333,7 @@
     border: 1px solid rgba(248,81,73,0.35);
     font-family: var(--mono);
     font-size: 11px;
-    color: #ff9492;
+    color: var(--red);
     line-height: 1.55;
   }
   .error-banner.visible { display: block; }
@@ -384,6 +390,7 @@
       <button class="tab active" onclick="switchTab('export')">Export</button>
       <button class="tab"        onclick="switchTab('import')">Import</button>
       <button class="tab"        onclick="switchTab('data')">Data</button>
+      <button class="tab"        onclick="switchTab('backup')">Backup</button>
     </div>
 
     <!-- Export sidebar -->
@@ -500,6 +507,16 @@
         <div class="empty"><div class="empty-icon">⬡</div>No export on disk yet</div>
       </div>
     </div>
+
+    <!-- Backup sidebar -->
+    <div id="sidebar-backup" style="display:none">
+      <div class="sidebar-section">
+        <div class="sidebar-label">Backup &amp; Restore</div>
+        <button class="btn btn-primary btn-block" id="bk-create-btn" onclick="createBackup()">↓ Create Backup</button>
+        <div class="field-hint" style="margin-top:10px">Compresses the current exports/ directory into a .tar.gz archive.</div>
+        <div class="error-banner" id="bk-error-banner"></div>
+      </div>
+    </div>
   </aside>
 
   <div class="content">
@@ -609,6 +626,23 @@
       </div>
     </div>
 
+    <!-- Backup panel -->
+    <div class="panel" id="panel-backup">
+      <div class="panel-header">
+        <div class="panel-title">Backup &amp; Restore — Exported Data</div>
+        <button class="btn btn-outline btn-sm" onclick="loadBackups()">⟳ Refresh</button>
+      </div>
+      <div class="panel-body">
+        <div class="section-heading">Backup Location</div>
+        <div id="bk-dir-meta" style="font-family:var(--mono);font-size:12px;color:var(--amber);margin-bottom:20px;padding:10px 14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius)">—</div>
+        <div class="section-heading">Backups</div>
+        <div class="empty" id="bk-empty"><div class="empty-icon">⬡</div>No backups yet. Create one to get started.</div>
+        <div class="hidden" id="bk-list"></div>
+        <div class="section-heading mt16">Log</div>
+        <div class="log-terminal" id="bk-log"></div>
+      </div>
+    </div>
+
   </div>
 </main>
 
@@ -676,15 +710,17 @@ document.addEventListener('DOMContentLoaded', restoreSession);
 
 // ── Tab switching ─────────────────────────────────────────────────────────
 function switchTab(tab) {
-  const tabs = ['export', 'import', 'data'];
+  const tabs = ['export', 'import', 'data', 'backup'];
   document.querySelectorAll('.tab').forEach((t, i) =>
     t.classList.toggle('active', tabs[i] === tab));
   document.getElementById('sidebar-export').style.display = tab === 'export' ? '' : 'none';
   document.getElementById('sidebar-import').style.display = tab === 'import' ? '' : 'none';
   const sd = document.getElementById('sidebar-data');
   sd.style.display = tab === 'data' ? 'flex' : 'none';
+  document.getElementById('sidebar-backup').style.display = tab === 'backup' ? '' : 'none';
   tabs.forEach(t => document.getElementById(`panel-${t}`).classList.toggle('active', t === tab));
   if (tab === 'data') loadDataBrowser();
+  if (tab === 'backup') loadBackups();
 }
 
 function setStatus(state, msg) {
@@ -1284,7 +1320,7 @@ function renderGroupDetail(d) {
 const _LABEL_PALETTE = [
   {bg:'rgba(88,166,255,0.14)', color:'var(--blue)',   border:'rgba(88,166,255,0.4)'},
   {bg:'rgba(63,185,80,0.12)',  color:'var(--green)',  border:'rgba(63,185,80,0.35)'},
-  {bg:'rgba(240,165,0,0.12)',  color:'var(--amber)',  border:'rgba(240,165,0,0.4)'},
+  {bg:'rgba(9,105,218,0.12)',  color:'var(--amber)',  border:'rgba(9,105,218,0.4)'},
   {bg:'rgba(188,140,255,0.12)',color:'var(--purple)', border:'rgba(188,140,255,0.4)'},
   {bg:'rgba(248,81,73,0.1)',   color:'var(--red)',    border:'rgba(248,81,73,0.4)'},
   {bg:'rgba(121,192,255,0.12)',color:'#79c0ff',       border:'rgba(121,192,255,0.35)'},
@@ -1659,6 +1695,101 @@ function buildJsonSections(d, files) {
       </div>
       ${s}
     </div>`;
+}
+
+// ── Backup / Restore ──────────────────────────────────────────────────────────
+function fmtSize(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+async function loadBackups() {
+  try {
+    const r = await fetch('/api/backups');
+    const d = await r.json();
+    document.getElementById('bk-dir-meta').textContent = d.backup_dir || '—';
+    const empty = document.getElementById('bk-empty');
+    const list  = document.getElementById('bk-list');
+    if (!d.backups || d.backups.length === 0) {
+      empty.classList.remove('hidden');
+      list.classList.add('hidden');
+      return;
+    }
+    empty.classList.add('hidden');
+    list.classList.remove('hidden');
+    list.innerHTML = `
+      <table class="bk-table">
+        <thead><tr><th>Filename</th><th>Created</th><th>Size</th><th></th></tr></thead>
+        <tbody>${d.backups.map(b => `
+          <tr>
+            <td>${_escHtml(b.filename)}</td>
+            <td>${new Date(b.created_at).toLocaleString()}</td>
+            <td>${fmtSize(b.size)}</td>
+            <td style="text-align:right;white-space:nowrap">
+              <button class="btn btn-outline btn-sm" onclick="restoreBackup('${_escHtml(b.filename)}')">↑ Restore</button>
+              <button class="btn btn-outline btn-sm" style="border-color:var(--red);color:var(--red);margin-left:4px" onclick="deleteBackup('${_escHtml(b.filename)}')">✕ Delete</button>
+            </td>
+          </tr>`).join('')}
+        </tbody>
+      </table>`;
+  } catch(e) {
+    log('bk-log', `Error loading backups: ${e.message}`, 'error');
+  }
+}
+
+async function createBackup() {
+  const btn = document.getElementById('bk-create-btn');
+  btn.disabled = true;
+  log('bk-log', 'Creating backup…');
+  setStatus('busy', 'Creating backup…');
+  try {
+    const r = await fetch('/api/backup', { method: 'POST' });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error || 'Unknown error');
+    log('bk-log', `Backup created: ${d.filename} (${fmtSize(d.size)})`, 'ok');
+    setStatus('', 'Idle');
+    await loadBackups();
+  } catch(e) {
+    log('bk-log', `Backup failed: ${e.message}`, 'error');
+    setStatus('error', 'Backup failed');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function restoreBackup(filename) {
+  if (!confirm(`Restore from "${filename}"?\n\nThis will overwrite all current exports/ data.`)) return;
+  log('bk-log', `Restoring from ${filename}…`);
+  setStatus('busy', 'Restoring…');
+  try {
+    const r = await fetch('/api/restore', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filename })
+    });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error || 'Unknown error');
+    log('bk-log', `Restored successfully from ${filename}`, 'ok');
+    setStatus('', 'Idle');
+  } catch(e) {
+    log('bk-log', `Restore failed: ${e.message}`, 'error');
+    setStatus('error', 'Restore failed');
+  }
+}
+
+async function deleteBackup(filename) {
+  if (!confirm(`Delete backup "${filename}"? This cannot be undone.`)) return;
+  log('bk-log', `Deleting ${filename}…`);
+  try {
+    const r = await fetch(`/api/backups/${encodeURIComponent(filename)}`, { method: 'DELETE' });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error || 'Unknown error');
+    log('bk-log', `Deleted ${filename}`, 'ok');
+    await loadBackups();
+  } catch(e) {
+    log('bk-log', `Delete failed: ${e.message}`, 'error');
+  }
 }
 
 </script>

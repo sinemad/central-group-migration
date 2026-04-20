@@ -23,6 +23,9 @@ ENV/
 exports/*
 !exports/.gitkeep
 
+# ── Backups ───────────────────────────────────────────────────────────────────
+backups/
+
 # ── Credentials ───────────────────────────────────────────────────────────────
 # Never commit tokens, passwords or cluster URLs.
 .env

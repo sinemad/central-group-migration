@@ -12,6 +12,9 @@ services:
       # Bind-mount a local directory so exports are accessible on the host
       # for inspection, git commits, or copying to another machine.
       - ./exports:/app/exports
+      # Persist compressed backups. Set BACKUP_DIR env var to use a different
+      # path inside the container (e.g. a NAS mount or separate volume).
+      - ./backups:/app/backups
     restart: unless-stopped
     environment:
       # Optional: override gunicorn args without rebuilding the image
