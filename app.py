@@ -1018,6 +1018,67 @@ def debug_group(group_name):
                         "traceback": traceback.format_exc()}), 500
 
 
+LABELS_FILE = os.path.join(EXPORT_DIR, "labels.json")
+
+
+def _read_labels() -> dict:
+    if not os.path.exists(LABELS_FILE):
+        return {"definitions": [], "assignments": {}}
+    with open(LABELS_FILE) as f:
+        return json.load(f)
+
+
+def _write_labels(data: dict):
+    with open(LABELS_FILE, "w") as f:
+        json.dump(data, f, indent=2)
+
+
+@app.route("/api/labels")
+def get_labels():
+    return jsonify({"ok": True, **_read_labels()})
+
+
+@app.route("/api/labels", methods=["POST"])
+def create_label():
+    name = (request.json or {}).get("name", "").strip()
+    if not name:
+        return jsonify({"ok": False, "error": "name is required"}), 400
+    data = _read_labels()
+    if name not in data["definitions"]:
+        data["definitions"].append(name)
+        _write_labels(data)
+    return jsonify({"ok": True, "definitions": data["definitions"]})
+
+
+@app.route("/api/labels/<name>", methods=["DELETE"])
+def delete_label(name):
+    data = _read_labels()
+    data["definitions"] = [d for d in data["definitions"] if d != name]
+    data["assignments"] = {
+        g: [l for l in labels if l != name]
+        for g, labels in data["assignments"].items()
+    }
+    _write_labels(data)
+    return jsonify({"ok": True, "definitions": data["definitions"],
+                    "assignments": data["assignments"]})
+
+
+@app.route("/api/groups/<group_name>/labels", methods=["PUT"])
+def set_group_labels(group_name):
+    labels = (request.json or {}).get("labels", [])
+    if not isinstance(labels, list):
+        return jsonify({"ok": False, "error": "labels must be a list"}), 400
+    data = _read_labels()
+    known = set(data["definitions"])
+    labels = [l for l in labels if l in known]
+    if labels:
+        data["assignments"][group_name] = labels
+    else:
+        data["assignments"].pop(group_name, None)
+    _write_labels(data)
+    return jsonify({"ok": True, "labels": data["assignments"].get(group_name, [])})
+
+
 @app.route("/api/backups")
 def list_backups():
     backups = []
