@@ -27,9 +27,10 @@ COPY --from=builder /install /usr/local
 WORKDIR /app
 
 # Copy application code
-COPY app.py         .
-COPY exporters.py   .
-COPY templates/     templates/
+COPY app.py                 .
+COPY exporters.py           .
+COPY new_central_importer.py .
+COPY templates/             templates/
 
 # The exports directory is mounted as a volume at runtime.
 # Create it here so the directory exists even without a mount,

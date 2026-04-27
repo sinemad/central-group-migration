@@ -450,16 +450,18 @@ def import_device_groups(
     }
 
     for model, serials in sorted(all_models.items()):
-        group_ok = create_device_group(conn, model)
+        group_name = f"Aruba_{model}"
+        group_ok = create_device_group(conn, group_name)
 
         if group_ok:
-            assign_ok, failed = assign_aps_to_device_group(conn, model, serials)
+            assign_ok, failed = assign_aps_to_device_group(conn, group_name, serials)
         else:
             assign_ok, failed = False, list(serials)
 
         overall = group_ok and assign_ok
         result["models"][model] = {
             "ok":             overall,
+            "group_name":     group_name,
             "serials":        serials,
             "failed_serials": failed,
         }

@@ -16,6 +16,7 @@ from flask_cors import CORS
 from pycentral.classic.base import ArubaCentralBase
 from pycentral.classic.configuration import Groups
 from exporters import get_active_exporters
+from new_central_importer import get_existing_sites, import_group_to_site, import_device_groups, assign_aps_to_site
 
 app = Flask(__name__)
 CORS(app)
@@ -504,21 +505,16 @@ def start_export():
             conn = _make_conn(base_url, token)
             all_groups = _get_all_groups(conn)
             groups = [g for g in all_groups if g in selected] if selected else all_groups
-            props = _get_group_properties(conn, groups)
+            exporters = get_active_exporters([])
 
             _emit(q, "start", {"total": len(groups)})
 
             for group_name in groups:
                 group_dir = os.path.join(EXPORT_DIR, group_name)
                 os.makedirs(group_dir, exist_ok=True)
-                properties  = props.get(group_name, {})
-                allowed     = properties.get("allowed_types", [])
-                exporters   = get_active_exporters(allowed)
-                files       = []
+                files = []
 
-                print(f"[export] {group_name}: allowed_types={allowed}, "
-                      f"active_exporters={[e['name'] for e in exporters]}",
-                      flush=True)
+                print(f"[export] {group_name}", flush=True)
 
                 for exporter in exporters:
                     try:
@@ -526,9 +522,7 @@ def start_export():
                             central=conn,
                             group_name=group_name,
                             group_dir=group_dir,
-                            properties=properties,
                         )
-                        # export_fn returns a status dict or None
                         if result:
                             files.append(result)
                             print(f"[export]   {exporter['name']}: "
@@ -546,9 +540,8 @@ def start_export():
                         })
 
                 _emit(q, "group_done", {
-                    "group":        group_name,
-                    "allowed_types": allowed,
-                    "files":        files,
+                    "group": group_name,
+                    "files": files,
                 })
 
             manifest = {
@@ -604,83 +597,107 @@ def get_manifest():
     return jsonify({"ok": True, "manifest": manifest, "groups": groups_detail})
 
 
-@app.route("/api/import", methods=["POST"])
-def start_import():
+@app.route("/api/import/new-central/sites", methods=["POST"])
+def get_nc_sites():
+    """Return all existing sites from a New Central instance, sorted by name."""
     body = request.json or {}
     base_url = body.get("base_url", "").rstrip("/")
     token = body.get("token", "")
-    selected = body.get("groups", [])
     if not base_url or not token:
         return jsonify({"ok": False, "error": "base_url and token required"}), 400
+    try:
+        conn = _make_conn(base_url, token)
+        sites_map = get_existing_sites(conn)
+        sites = sorted(
+            [{"site_id": sid, "site_name": name} for name, sid in sites_map.items()],
+            key=lambda s: s["site_name"].lower(),
+        )
+        return jsonify({"ok": True, "sites": sites, "total": len(sites)})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
 
-    p = os.path.join(EXPORT_DIR, "manifest.json")
-    if not os.path.exists(p):
-        return jsonify({"ok": False, "error": "No manifest found — run export first"}), 400
 
-    with open(p) as f:
-        manifest = json.load(f)
+@app.route("/api/import/new-central", methods=["POST"])
+def start_import_new_central():
+    """Assign APs from exported Classic Central groups to existing New Central sites.
 
-    op_id = f"import_{int(time.time()*1000)}"
+    Accepts a mappings dict {group_name: site_id} — no sites are created.
+    Only groups present in the mappings dict are processed.
+    """
+    body = request.json or {}
+    base_url = body.get("base_url", "").rstrip("/")
+    token = body.get("token", "")
+    mappings = body.get("mappings", {})   # {group_name: site_id}
+    if not base_url or not token:
+        return jsonify({"ok": False, "error": "base_url and token required"}), 400
+    if not mappings:
+        return jsonify({"ok": False, "error": "No site mappings provided"}), 400
+
+    op_id = f"ncimport_{int(time.time()*1000)}"
     q: queue.Queue = queue.Queue()
     _progress_queues[op_id] = q
 
     def run():
         try:
             conn = _make_conn(base_url, token)
-            all_groups = manifest.get("groups", [])
-            groups = [g for g in all_groups if g in selected] if selected else all_groups
+            groups = list(mappings.keys())
+            _emit(q, "start", {"total": len(groups)})
 
-            # Resolve import names (original → renamed, or unchanged)
-            rename_map = manifest.get("renames", {})
-            import_names = {g: _import_name(manifest, g) for g in groups}
+            for group_name in groups:
+                mapping_info = mappings[group_name]
+                # Accept either {site_id, serials} dict or a plain site_id int/str
+                if isinstance(mapping_info, dict):
+                    site_id = int(mapping_info["site_id"])
+                    explicit_serials = mapping_info.get("serials")  # None = use all
+                else:
+                    site_id = int(mapping_info)
+                    explicit_serials = None
 
-            try:
-                existing = set(_get_all_groups(conn))
-            except Exception:
-                existing = set()
-
-            # Skip if the *import* name (possibly renamed) already exists on target
-            to_create = [g for g in groups if import_names[g] not in existing]
-            skipped   = [g for g in groups if import_names[g] in existing]
-
-            _emit(q, "start", {"total": len(to_create), "skipped": skipped})
-
-            for group_name in to_create:
-                iname     = import_names[group_name]
                 group_dir = os.path.join(EXPORT_DIR, group_name)
-                renamed   = iname != group_name
 
                 if not os.path.isdir(group_dir):
                     _emit(q, "group_done", {
-                        "group": group_name, "import_name": iname,
-                        "renamed": renamed, "status": "missing", "steps": []
+                        "group":          group_name,
+                        "site_id":        site_id,
+                        "status":         "missing",
+                        "ap_count":       0,
+                        "failed_serials": [],
+                        "steps": [{"name": "Assign APs", "ok": False,
+                                   "detail": "Export directory not found"}],
                     })
                     continue
 
-                props   = _load(group_dir, "properties.json") or {}
-                allowed = props.get("allowed_types", [])
-                steps   = []
+                if explicit_serials is not None:
+                    serials = [s for s in explicit_serials if s]
+                else:
+                    inventory = _load(group_dir, "ap_inventory.json") or []
+                    serials = [e["serial"] for e in inventory if e.get("serial")]
 
-                ok = _import_properties(conn, group_name, group_dir, import_name=iname)
-                steps.append({"name": "Create group", "ok": ok})
+                if not serials:
+                    _emit(q, "group_done", {
+                        "group":          group_name,
+                        "site_id":        site_id,
+                        "status":         "ok",
+                        "ap_count":       0,
+                        "failed_serials": [],
+                        "steps": [{"name": "Assign APs", "ok": True,
+                                   "detail": "No APs selected"}],
+                    })
+                    continue
 
-                if ok and _has_iap(allowed):
-                    ok2 = _import_ap_cli_config(conn, group_name, group_dir, import_name=iname)
-                    steps.append({"name": "CLI config", "ok": ok2})
-
-                    ok3 = _import_country(conn, group_name, group_dir, import_name=iname)
-                    steps.append({"name": "Country code", "ok": ok3})
-
-                overall = all(s["ok"] for s in steps)
+                ok, failed = assign_aps_to_site(conn, site_id, serials)
+                assigned = len(serials) - len(failed)
                 _emit(q, "group_done", {
-                    "group":       group_name,
-                    "import_name": iname,
-                    "renamed":     renamed,
-                    "status":      "ok" if overall else "fail",
-                    "steps":       steps
+                    "group":          group_name,
+                    "site_id":        site_id,
+                    "status":         "ok" if ok else "fail",
+                    "ap_count":       len(serials),
+                    "failed_serials": failed,
+                    "steps": [{"name": "Assign APs", "ok": ok,
+                               "detail": f"{assigned}/{len(serials)} assigned"}],
                 })
 
-            _emit(q, "complete", {"total": len(to_create), "skipped": len(skipped)})
+            _emit(q, "complete", {"total": len(groups)})
         except Exception as e:
             _emit(q, "error", {"message": str(e)})
         finally:
@@ -690,8 +707,8 @@ def start_import():
     return jsonify({"ok": True, "op_id": op_id})
 
 
-@app.route("/api/import/progress/<op_id>")
-def import_progress(op_id):
+@app.route("/api/import/new-central/progress/<op_id>")
+def import_new_central_progress(op_id):
     return Response(
         stream_with_context(_sse_stream(op_id)),
         mimetype="text/event-stream",
@@ -717,48 +734,22 @@ def list_groups():
     groups = []
     for name in manifest.get("groups", []):
         gdir = os.path.join(EXPORT_DIR, name)
-        props    = _load(gdir, "properties.json") or {}
-        country  = _load(gdir, "country.json") or {}
-        # Enumerate all known exportable file/directory artefacts
-        known_artefacts = [
-            "properties.json",
-            "ap_cli_config.json",
-            "country.json",
-            "wlans.json",
-            "wlans_summary.json",
-            "device_ap_configs",   # directory
-            "ap_settings",         # directory
-        ]
-        present = []
-        for art in known_artefacts:
-            p = os.path.join(gdir, art)
-            if os.path.exists(p):
-                present.append(art)
-        # Per-device counts
-        n_device_configs = len([
-            f for f in os.listdir(os.path.join(gdir, "device_ap_configs"))
-            if f.endswith(".json")
-        ]) if os.path.isdir(os.path.join(gdir, "device_ap_configs")) else 0
+        inventory = _load(gdir, "ap_inventory.json") or []
         n_ap_settings = len([
             f for f in os.listdir(os.path.join(gdir, "ap_settings"))
             if f.endswith(".json")
         ]) if os.path.isdir(os.path.join(gdir, "ap_settings")) else 0
-        n_wlans = len(_load(gdir, "wlans.json") or [])
-
+        present = [
+            art for art in ("ap_inventory.json", "ap_cli_config.json", "ap_settings")
+            if os.path.exists(os.path.join(gdir, art))
+        ]
         groups.append({
-            "name":             name,
-            "import_name":      renames.get(name, name),
-            "renamed":          name in renames,
-            "allowed_types":    props.get("allowed_types", []),
-            "aos10":            props.get("aos10", False),
-            "monitor_only_sw":  props.get("monitor_only_sw", False),
-            "monitor_only_cx":  props.get("monitor_only_cx", False),
-            "country":          country.get("country", ""),
-            "has_cli_config":   "ap_cli_config.json" in present,
-            "n_wlans":          n_wlans,
-            "n_device_configs": n_device_configs,
-            "n_ap_settings":    n_ap_settings,
-            "files":            present,
+            "name":          name,
+            "import_name":   renames.get(name, name),
+            "renamed":       name in renames,
+            "n_aps":         len(inventory),
+            "n_ap_settings": n_ap_settings,
+            "files":         present,
         })
 
     return jsonify({"ok": True, "manifest": manifest, "groups": groups})
@@ -772,81 +763,38 @@ def get_group(group_name):
         return jsonify({"ok": False,
                         "error": f"Group '{group_name}' not found on disk"}), 404
 
-    manifest   = _read_manifest() or {}
-    renames    = manifest.get("renames", {})
-    props      = _load(gdir, "properties.json") or {}
-    country    = _load(gdir, "country.json") or {}
-    cli_raw    = _load(gdir, "ap_cli_config.json")
-    cli_config = cli_raw.get("cli_config", []) if cli_raw else None
+    manifest  = _read_manifest() or {}
+    renames   = manifest.get("renames", {})
+    inventory = _load(gdir, "ap_inventory.json") or []
 
-    # WLAN detail
-    wlans = _load(gdir, "wlans.json") or []
-
-    # Guard against double-encoded JSON — some Central clusters return a JSON
-    # string (the entire payload wrapped in quotes) rather than a JSON object.
-    # _load() would give us a Python str in that case; unwrap it.
-    if isinstance(wlans, str):
-        try:
-            wlans = json.loads(wlans)
-        except (json.JSONDecodeError, ValueError):
-            wlans = []
-    # Same guard for individual list items
-    if isinstance(wlans, list):
-        decoded = []
-        for w in wlans:
-            if isinstance(w, str):
-                try:
-                    decoded.append(json.loads(w))
-                except (json.JSONDecodeError, ValueError):
-                    decoded.append(w)
-            else:
-                decoded.append(w)
-        wlans = decoded
-
-    # Per-device counts (serial lists — kept for backward compat)
-    dev_dir  = os.path.join(gdir, "device_ap_configs")
+    # Load per-AP settings keyed by serial for fast lookup
     sett_dir = os.path.join(gdir, "ap_settings")
-    device_configs = [
-        f.replace(".json", "") for f in os.listdir(dev_dir)
-        if f.endswith(".json")
-    ] if os.path.isdir(dev_dir) else []
-    ap_settings_serials = [
-        f.replace(".json", "") for f in os.listdir(sett_dir)
-        if f.endswith(".json")
-    ] if os.path.isdir(sett_dir) else []
-
-    # Full JSON data for the collapsible tree viewer in the Data tab
-    device_configs_data = []
-    if os.path.isdir(dev_dir):
-        for fname in sorted(os.listdir(dev_dir)):
-            if fname.endswith(".json"):
-                data = _load(dev_dir, fname)
-                if data:
-                    device_configs_data.append(data)
-
-    ap_settings_data = []
+    ap_settings: dict[str, dict] = {}
     if os.path.isdir(sett_dir):
         for fname in sorted(os.listdir(sett_dir)):
             if fname.endswith(".json"):
                 data = _load(sett_dir, fname)
                 if data:
-                    ap_settings_data.append(data)
+                    serial = fname[:-5]
+                    ap_settings[serial] = data
+
+    # Merge settings into inventory entries for the detail view
+    aps = []
+    for entry in inventory:
+        serial = entry.get("serial", "")
+        aps.append({**entry, "settings": ap_settings.get(serial)})
+
+    cli_config = _load(gdir, "ap_cli_config.json")
 
     return jsonify({
-        "ok":                    True,
-        "name":                  group_name,
-        "import_name":           renames.get(group_name, group_name),
-        "renamed":               group_name in renames,
-        "properties":            props,
-        "country":               country.get("country", ""),
-        "cli_config":            cli_config,
-        "wlans":                 wlans,
-        "n_wlans":               len(wlans),
-        "device_config_serials": device_configs,
-        "n_device_configs":      len(device_configs),
-        "n_ap_settings":         len(ap_settings_serials),
-        "device_configs_data":   device_configs_data,
-        "ap_settings_data":      ap_settings_data,
+        "ok":          True,
+        "name":        group_name,
+        "import_name": renames.get(group_name, group_name),
+        "renamed":     group_name in renames,
+        "aps":         aps,
+        "n_aps":       len(aps),
+        "n_settings":  len(ap_settings),
+        "cli_config":  cli_config,
     })
 
 
