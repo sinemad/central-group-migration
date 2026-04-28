@@ -617,6 +617,63 @@ def get_nc_sites():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+@app.route("/api/import/new-central/memberships", methods=["POST"])
+def get_ap_memberships():
+    """Return current site and device-group membership for a list of AP serials.
+
+    POST body: {base_url, token, serials: [serial, ...]}
+    Response:  {ok: true, memberships: {serial: {site_name, device_group}}}
+
+    Uses GET /monitoring/v2/aps (paginated) which returns site and group_name
+    for every AP visible to the account.  Entries whose serial is not in the
+    requested list are filtered out so the response stays compact.
+    """
+    body = request.json or {}
+    base_url = body.get("base_url", "").rstrip("/")
+    token    = body.get("token", "")
+    want     = set(body.get("serials", []))
+
+    if not base_url or not token:
+        return jsonify({"ok": False, "error": "base_url and token required"}), 400
+
+    try:
+        conn = _make_conn(base_url, token)
+        memberships: dict[str, dict] = {}
+        offset, limit = 0, 100
+
+        while True:
+            resp = conn.command(
+                apiMethod="GET",
+                apiPath="/monitoring/v2/aps",
+                apiParams={"offset": offset, "limit": limit,
+                           "fields": "serial,site,group_name"},
+            )
+            if resp["code"] != 200:
+                break
+            msg   = resp.get("msg") or {}
+            data  = msg.get("aps") or []
+            total = msg.get("total", 0)
+
+            for ap in data:
+                s = ap.get("serial", "")
+                if s and (not want or s in want):
+                    memberships[s] = {
+                        "site_name":    ap.get("site") or ap.get("site_name") or None,
+                        "device_group": ap.get("group_name") or None,
+                    }
+
+            # Stop early once all requested serials are found
+            if want and all(s in memberships for s in want):
+                break
+            if not data or offset + len(data) >= total:
+                break
+            offset += limit
+
+        return jsonify({"ok": True, "memberships": memberships})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 @app.route("/api/import/new-central", methods=["POST"])
 def start_import_new_central():
     """Assign APs from exported Classic Central groups to existing New Central sites.
@@ -628,6 +685,7 @@ def start_import_new_central():
     base_url = body.get("base_url", "").rstrip("/")
     token = body.get("token", "")
     mappings = body.get("mappings", {})   # {group_name: site_id}
+    verbose  = bool(body.get("verbose", False))
     if not base_url or not token:
         return jsonify({"ok": False, "error": "base_url and token required"}), 400
     if not mappings:
@@ -637,11 +695,20 @@ def start_import_new_central():
     q: queue.Queue = queue.Queue()
     _progress_queues[op_id] = q
 
+    def vlog(msg: str, level: str = "debug"):
+        """Emit a verbose log line only when verbose mode is on."""
+        if verbose:
+            _emit(q, "log", {"level": level, "message": msg})
+
     def run():
         try:
             conn = _make_conn(base_url, token)
             groups = list(mappings.keys())
             _emit(q, "start", {"total": len(groups)})
+
+            if verbose:
+                _emit(q, "log", {"level": "info",
+                                 "message": f"Verbose logging enabled — target: {base_url}"})
 
             for group_name in groups:
                 mapping_info = mappings[group_name]
@@ -653,9 +720,12 @@ def start_import_new_central():
                     site_id = int(mapping_info)
                     explicit_serials = None
 
+                vlog(f"── Group: {group_name!r}  →  site_id={site_id}")
+
                 group_dir = os.path.join(EXPORT_DIR, group_name)
 
                 if not os.path.isdir(group_dir):
+                    vlog(f"  Export directory not found: {group_dir}", "warn")
                     _emit(q, "group_done", {
                         "group":          group_name,
                         "site_id":        site_id,
@@ -669,11 +739,17 @@ def start_import_new_central():
 
                 if explicit_serials is not None:
                     serials = [s for s in explicit_serials if s]
+                    vlog(f"  Serial source: explicit selection ({len(serials)} APs)")
                 else:
                     inventory = _load(group_dir, "ap_inventory.json") or []
                     serials = [e["serial"] for e in inventory if e.get("serial")]
+                    vlog(f"  Serial source: ap_inventory.json ({len(inventory)} entries → {len(serials)} serials)")
+
+                if serials:
+                    vlog(f"  Serials: {', '.join(serials)}")
 
                 if not serials:
+                    vlog(f"  No APs to assign — skipping", "warn")
                     _emit(q, "group_done", {
                         "group":          group_name,
                         "site_id":        site_id,
@@ -685,21 +761,234 @@ def start_import_new_central():
                     })
                     continue
 
-                ok, failed = assign_aps_to_site(conn, site_id, serials)
+                # Inline chunked assignment with per-chunk verbose logging
+                from new_central_importer import _chunked, _CHUNK_SIZE
+                ok_all = True
+                failed: list[str] = []
+                chunks = list(_chunked(serials, _CHUNK_SIZE))
+                vlog(f"  Sending {len(serials)} APs in {len(chunks)} chunk(s) "
+                     f"(chunk size={_CHUNK_SIZE})")
+
+                for idx, chunk in enumerate(chunks, 1):
+                    vlog(f"  Chunk {idx}/{len(chunks)}: POST /central/v2/sites/associations "
+                         f"[{', '.join(chunk)}]")
+                    resp = conn.command(
+                        apiMethod="POST",
+                        apiPath="/central/v2/sites/associations",
+                        apiData={
+                            "site_id":     site_id,
+                            "device_ids":  chunk,
+                            "device_type": "IAP",
+                        },
+                    )
+                    code = resp.get("code")
+                    msg  = resp.get("msg")
+                    vlog(f"  Chunk {idx} response: HTTP {code}  body={str(msg)[:300]}")
+                    if code not in (200, 201):
+                        ok_all = False
+                        failed.extend(chunk)
+                        vlog(f"  Chunk {idx} FAILED — {len(chunk)} AP(s) not assigned", "error")
+                    else:
+                        vlog(f"  Chunk {idx} OK — {len(chunk)} AP(s) assigned")
+
                 assigned = len(serials) - len(failed)
+                if failed:
+                    vlog(f"  Failed serials: {', '.join(failed)}", "warn")
+                vlog(f"  Result: {assigned}/{len(serials)} assigned  ok={ok_all}")
+
                 _emit(q, "group_done", {
                     "group":          group_name,
                     "site_id":        site_id,
-                    "status":         "ok" if ok else "fail",
+                    "status":         "ok" if ok_all else "fail",
                     "ap_count":       len(serials),
                     "failed_serials": failed,
-                    "steps": [{"name": "Assign APs", "ok": ok,
+                    "steps": [{"name": "Assign APs", "ok": ok_all,
                                "detail": f"{assigned}/{len(serials)} assigned"}],
                 })
 
-            _emit(q, "complete", {"total": len(groups)})
+            # --- Device group assignment (Aruba_<model>) ---
+            _emit(q, "log", {"level": "info", "message": "── Device group assignment"})
+            dg_models: dict[str, list[str]] = {}
+            dg_seen: set[str] = set()
+            for gn in groups:
+                mi = mappings[gn]
+                explicit = mi.get("serials") if isinstance(mi, dict) else None
+                gdir = os.path.join(EXPORT_DIR, gn)
+                if not os.path.isdir(gdir):
+                    continue
+                inv = _load(gdir, "ap_inventory.json") or []
+                if explicit is not None:
+                    ex_set = set(explicit)
+                    inv = [e for e in inv if e.get("serial") in ex_set]
+                for entry in inv:
+                    serial = (entry.get("serial") or "").strip()
+                    model  = (entry.get("model")  or "").strip()
+                    if serial and model and serial not in dg_seen:
+                        dg_seen.add(serial)
+                        dg_models.setdefault(model, []).append(serial)
+
+            dg_results: list[dict] = []
+            if not dg_models:
+                _emit(q, "log", {"level": "warn",
+                                 "message": "  No AP model data — skipping device group step"})
+            else:
+                from new_central_importer import _chunked, _CHUNK_SIZE
+
+                # Step 1: fetch all existing device groups once
+                vlog("  Fetching existing New Central device groups…")
+                existing_dg: set[str] = set()
+                dg_list_offset = 0
+                while True:
+                    gl_resp = conn.command(
+                        apiMethod="GET",
+                        apiPath="/configuration/v2/groups",
+                        apiParams={"offset": dg_list_offset, "limit": 100},
+                    )
+                    gl_code = gl_resp.get("code")
+                    gl_msg  = gl_resp.get("msg")
+                    vlog(f"  GET /configuration/v2/groups offset={dg_list_offset}: HTTP {gl_code}  raw={str(gl_msg)[:300]}")
+                    if gl_code != 200:
+                        break
+                    # API may return a list directly or {"data": [...], "total": N}
+                    if isinstance(gl_msg, list):
+                        gl_data  = gl_msg
+                        gl_total = len(gl_msg)
+                    else:
+                        gl_msg   = gl_msg or {}
+                        gl_data  = gl_msg.get("data") or []
+                        gl_total = gl_msg.get("total", len(gl_data))
+                    for g in gl_data:
+                        if isinstance(g, str):
+                            existing_dg.add(g)
+                        elif isinstance(g, list) and g:
+                            # API wraps each name in a single-element list: ['Aruba_AP-515']
+                            existing_dg.add(str(g[0]))
+                        elif isinstance(g, dict):
+                            name = g.get("group") or g.get("name") or g.get("group_name") or ""
+                            if name:
+                                existing_dg.add(name)
+                    if not gl_data or dg_list_offset + len(gl_data) >= gl_total:
+                        break
+                    dg_list_offset += 100
+                vlog(f"  Found {len(existing_dg)} existing group(s)")
+
+                # Step 2: fetch current group membership for all APs we intend to move
+                all_dg_serials = list(dg_seen)
+                vlog(f"  Checking current group for {len(all_dg_serials)} AP(s)…")
+                ap_current_group: dict[str, str] = {}  # serial → current group_name
+                mem_offset = 0
+                while True:
+                    m_resp = conn.command(
+                        apiMethod="GET",
+                        apiPath="/monitoring/v2/aps",
+                        apiParams={"offset": mem_offset, "limit": 100,
+                                   "fields": "serial,group_name"},
+                    )
+                    m_code = m_resp.get("code")
+                    m_msg  = m_resp.get("msg") or {}
+                    if m_code != 200:
+                        vlog(f"  GET /monitoring/v2/aps: HTTP {m_code} — skipping membership check", "warn")
+                        break
+                    m_data  = m_msg.get("aps") or []
+                    m_total = m_msg.get("total", 0)
+                    for ap in m_data:
+                        s = ap.get("serial", "")
+                        if s in dg_seen:
+                            ap_current_group[s] = ap.get("group_name") or ""
+                    if all(s in ap_current_group for s in all_dg_serials):
+                        break  # found every serial we care about
+                    if not m_data or mem_offset + len(m_data) >= m_total:
+                        break
+                    mem_offset += 100
+                for s in all_dg_serials:
+                    vlog(f"  AP {s} current group: {ap_current_group.get(s, '(unknown)')!r}")
+
+                # Step 3: per-model create (if needed) + move (if not already member)
+                for model, serials in sorted(dg_models.items()):
+                    dg_name = f"Aruba_{model}"
+                    vlog(f"  Model {model}: {len(serials)} AP(s) → device group {dg_name!r}")
+
+                    # Create only if the group doesn't already exist
+                    if dg_name in existing_dg:
+                        vlog(f"  Group {dg_name!r} already exists — skipping creation")
+                        group_ok = True
+                    else:
+                        cr_resp = conn.command(
+                            apiMethod="POST",
+                            apiPath="/configuration/v2/groups",
+                            apiData={
+                                "group": dg_name,
+                                "group_attributes": {
+                                    "template_info": {"Wired": False, "Wireless": True},
+                                    "group_properties": {
+                                        "AllowedDevTypes": ["AccessPoints"],
+                                        "AOSVersion":      "AOS10",
+                                        "NewCentral":      True,
+                                    },
+                                },
+                            },
+                        )
+                        cr_code = cr_resp.get("code")
+                        cr_body = cr_resp.get("msg") or {}
+                        cr_desc = (cr_body.get("description") or "") if isinstance(cr_body, dict) else str(cr_body)
+                        vlog(f"  Create group {dg_name!r}: HTTP {cr_code}  body={cr_desc[:200]}")
+                        already_exists = "already exists" in cr_desc.lower()
+                        group_ok = cr_code in (200, 201) or already_exists
+                        if group_ok:
+                            existing_dg.add(dg_name)
+
+                    dg_failed: list[str] = []
+                    assign_ok = True
+                    if group_ok:
+                        # Skip APs already in this group
+                        to_move = [s for s in serials
+                                   if ap_current_group.get(s) != dg_name]
+                        already  = [s for s in serials
+                                    if ap_current_group.get(s) == dg_name]
+                        if already:
+                            _emit(q, "log", {"level": "info",
+                                             "message": f"  {len(already)} AP(s) already in {dg_name!r} — skipped: {already}"})
+                        if to_move:
+                            dg_chunks = list(_chunked(to_move, _CHUNK_SIZE))
+                            for idx, chunk in enumerate(dg_chunks, 1):
+                                vlog(f"  Move chunk {idx}/{len(dg_chunks)}: POST /configuration/v1/devices/move {chunk}")
+                                mv_resp = conn.command(
+                                    apiMethod="POST",
+                                    apiPath="/configuration/v1/devices/move",
+                                    apiData={"group": dg_name, "serials": chunk},
+                                )
+                                mv_code = mv_resp.get("code")
+                                vlog(f"  Move chunk {idx} response: HTTP {mv_code}  body={str(mv_resp.get('msg',''))[:300]}")
+                                if mv_code not in (200, 201):
+                                    assign_ok = False
+                                    dg_failed.extend(chunk)
+                        else:
+                            _emit(q, "log", {"level": "info",
+                                             "message": f"  All APs already in {dg_name!r} — nothing to move"})
+                    else:
+                        assign_ok = False
+                        dg_failed = list(serials)
+
+                    overall = group_ok and assign_ok
+                    moved = len(serials) - len(dg_failed)
+                    _emit(q, "log", {
+                        "level":   "info" if overall else "error",
+                        "message": f"  {dg_name}: {moved}/{len(serials)} APs moved — {'OK' if overall else 'FAILED'}",
+                    })
+                    dg_results.append({
+                        "model":          model,
+                        "group_name":     dg_name,
+                        "total":          len(serials),
+                        "ok":             overall,
+                        "failed_serials": dg_failed,
+                    })
+
+            _emit(q, "complete", {"total": len(groups), "dg_results": dg_results})
         except Exception as e:
+            import traceback
+            tb = traceback.format_exc()
             _emit(q, "error", {"message": str(e)})
+            _emit(q, "log", {"level": "error", "message": f"Traceback:\n{tb}"})
         finally:
             q.put(None)
 
@@ -718,6 +1007,118 @@ def import_new_central_progress(op_id):
 
 if __name__ == "__main__":
     app.run(debug=True, port=5000, threaded=True)
+
+
+# ---------------------------------------------------------------------------
+# Sample export — testing fixture
+# ---------------------------------------------------------------------------
+
+SAMPLE_CONFIG_FILE = os.path.join(EXPORT_DIR, ".sample_config.json")
+
+_SAMPLE_DEFAULTS = {
+    "enabled": False,
+    "name": "SAMPLE-TEST-GROUP",
+    "aps": [
+        {"serial": "TEST-AP-0001", "name": "sample-ap-01", "model": "AP-635"},
+    ],
+}
+
+
+def _read_sample_config() -> dict:
+    if not os.path.exists(SAMPLE_CONFIG_FILE):
+        return dict(_SAMPLE_DEFAULTS)
+    with open(SAMPLE_CONFIG_FILE) as f:
+        return json.load(f)
+
+
+def _write_sample_files(name: str, aps: list):
+    """Write ap_inventory.json, per-AP settings, and a stub CLI config for the sample group."""
+    import shutil
+    group_dir = os.path.join(EXPORT_DIR, name)
+    sett_dir  = os.path.join(group_dir, "ap_settings")
+
+    # Clear old ap_settings so stale serial files don't linger
+    if os.path.isdir(sett_dir):
+        shutil.rmtree(sett_dir)
+    os.makedirs(sett_dir, exist_ok=True)
+
+    inventory = [{"serial": ap["serial"], "name": ap["name"],
+                  "model": ap["model"], "ip": ""} for ap in aps]
+    _save(group_dir, "ap_inventory.json", inventory)
+
+    for ap in aps:
+        settings = {
+            "achannel": "0", "atxpower": "-127",
+            "dot11a_radio_disable": False, "dot11g_radio_disable": False,
+            "gchannel": "0",  "gtxpower": "-127",
+            "hostname": ap["name"], "ip_address": "0.0.0.0",
+            "usb_port_disable": False, "zonename": "_#ALL#_",
+        }
+        with open(os.path.join(sett_dir, f"{ap['serial']}.json"), "w") as f:
+            json.dump(settings, f, indent=2)
+
+    stub_cli = {"cli_config": ["# Sample export — generated for import testing"]}
+    _save(group_dir, "ap_cli_config.json", stub_cli)
+
+
+@app.route("/api/sample")
+def get_sample():
+    return jsonify({"ok": True, **_read_sample_config()})
+
+
+@app.route("/api/sample", methods=["POST"])
+def save_sample():
+    """Persist sample export config and write files to disk.
+
+    Body: {enabled: bool, name: str, aps: [{serial, name, model}, ...]}
+
+    Files are always written so the import pipeline can find them when enabled.
+    The old directory is removed when the group name changes.
+    """
+    import shutil
+    body    = request.json or {}
+    enabled = bool(body.get("enabled", False))
+    name    = (body.get("name") or "").strip()
+    aps     = body.get("aps", [])
+
+    if not name:
+        return jsonify({"ok": False, "error": "name is required"}), 400
+    if not (1 <= len(aps) <= 5):
+        return jsonify({"ok": False, "error": "between 1 and 5 APs required"}), 400
+
+    # Validate serials and names
+    serials = [ap.get("serial", "").strip() for ap in aps]
+    if any(not s for s in serials):
+        return jsonify({"ok": False, "error": "All AP serial numbers are required"}), 400
+    if len(set(serials)) != len(serials):
+        return jsonify({"ok": False, "error": "AP serial numbers must be unique"}), 400
+
+    # Conflict check: name must not collide with a real (non-sample) export group
+    current = _read_sample_config()
+    old_name = current.get("name", "")
+    manifest = _read_manifest() or {}
+    real_groups = [g for g in manifest.get("groups", []) if g != old_name]
+    if name in real_groups:
+        return jsonify({"ok": False,
+                        "error": f"'{name}' is already used by a real export group"}), 409
+
+    # Clean up old directory when name changes
+    if old_name and old_name != name:
+        old_dir = os.path.join(EXPORT_DIR, old_name)
+        if os.path.isdir(old_dir):
+            shutil.rmtree(old_dir)
+
+    clean_aps = [{"serial": ap.get("serial","").strip(),
+                  "name":   ap.get("name","").strip() or ap.get("serial","").strip(),
+                  "model":  ap.get("model","").strip() or "AP-635"} for ap in aps]
+
+    _write_sample_files(name, clean_aps)
+
+    config = {"enabled": enabled, "name": name, "aps": clean_aps}
+    with open(SAMPLE_CONFIG_FILE, "w") as f:
+        json.dump(config, f, indent=2)
+
+    return jsonify({"ok": True, **config})
 
 
 @app.route("/api/groups")
@@ -751,6 +1152,27 @@ def list_groups():
             "n_ap_settings": n_ap_settings,
             "files":         present,
         })
+
+    # Inject sample group at the top if enabled (kept separate from real manifest)
+    sample = _read_sample_config()
+    if sample.get("enabled") and sample.get("name"):
+        sname = sample["name"]
+        if sname not in manifest.get("groups", []):
+            sgdir = os.path.join(EXPORT_DIR, sname)
+            sinventory = _load(sgdir, "ap_inventory.json") or []
+            sn_sett = len([
+                f for f in os.listdir(os.path.join(sgdir, "ap_settings"))
+                if f.endswith(".json")
+            ]) if os.path.isdir(os.path.join(sgdir, "ap_settings")) else 0
+            groups.insert(0, {
+                "name":          sname,
+                "import_name":   sname,
+                "renamed":       False,
+                "n_aps":         len(sinventory),
+                "n_ap_settings": sn_sett,
+                "files":         ["ap_inventory.json", "ap_cli_config.json", "ap_settings"],
+                "sample":        True,
+            })
 
     return jsonify({"ok": True, "manifest": manifest, "groups": groups})
 
@@ -786,6 +1208,9 @@ def get_group(group_name):
 
     cli_config = _load(gdir, "ap_cli_config.json")
 
+    sample_cfg = _read_sample_config()
+    is_sample  = (sample_cfg.get("enabled") and sample_cfg.get("name") == group_name)
+
     return jsonify({
         "ok":          True,
         "name":        group_name,
@@ -795,6 +1220,7 @@ def get_group(group_name):
         "n_aps":       len(aps),
         "n_settings":  len(ap_settings),
         "cli_config":  cli_config,
+        "sample":      is_sample,
     })
 
 

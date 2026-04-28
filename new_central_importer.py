@@ -171,8 +171,8 @@ def assign_aps_to_site(
     POST /central/v2/sites/associations
     Body: {
         "site_id":     <int>,
-        "device_ids":  {"aps": [<serial>, ...]},
-        "device_type": "AP"
+        "device_ids":  [<serial>, ...],
+        "device_type": "IAP"
     }
 
     Returns (overall_ok: bool, failed_serials: list[str]).
@@ -190,8 +190,8 @@ def assign_aps_to_site(
             apiPath="/central/v2/sites/associations",
             apiData={
                 "site_id":     site_id,
-                "device_ids":  {"aps": chunk},
-                "device_type": "AP",
+                "device_ids":  chunk,
+                "device_type": "IAP",
             },
         )
         if resp["code"] not in (200, 201):
@@ -379,7 +379,7 @@ def assign_aps_to_device_group(
     for chunk in _chunked(serials, _CHUNK_SIZE):
         resp = conn.command(
             apiMethod="POST",
-            apiPath="/device_management/v1/group/move",
+            apiPath="/configuration/v1/devices/move",
             apiData={"group": group_name, "serials": chunk},
         )
         if resp["code"] not in (200, 201):

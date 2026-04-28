@@ -261,10 +261,12 @@
   .log-line { display: flex; gap: 12px; }
   .log-ts   { color: var(--muted); flex-shrink: 0; }
   .log-msg  { color: var(--text); }
-  .log-ok   .log-msg { color: var(--green); }
-  .log-warn .log-msg { color: var(--amber); }
-  .log-err  .log-msg { color: var(--red); }
-  .log-info .log-msg { color: var(--blue); }
+  .log-ok    .log-msg { color: var(--green); }
+  .log-warn  .log-msg { color: var(--amber); }
+  .log-err   .log-msg { color: var(--red); }
+  .log-info  .log-msg { color: var(--blue); }
+  .log-debug .log-msg { color: var(--muted); font-size: 10.5px; }
+  .log-debug .log-ts  { font-size: 10.5px; }
   .progress-section { margin-bottom: 24px; }
   .progress-label { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 11px; color: var(--muted); margin-bottom: 6px; }
   .progress-bar  { height: 3px; background: var(--border); border-radius: 2px; overflow: hidden; }
@@ -331,6 +333,10 @@
   .match-badge.auto   { background: rgba(63,185,80,0.1);  color: var(--green);  border: 1px solid rgba(63,185,80,0.3); }
   .match-badge.manual { background: rgba(9,105,218,0.1);  color: var(--amber);  border: 1px solid rgba(9,105,218,0.3); }
   .match-badge.none   { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+  .member-badge { font-family: var(--mono); font-size: 8px; font-weight: 600; letter-spacing: 0.05em; padding: 1px 5px; border-radius: 3px; white-space: nowrap; vertical-align: middle; margin-left: 4px; }
+  .member-badge.in-site  { background: rgba(255,160,0,0.12); color: var(--amber); border: 1px solid rgba(255,160,0,0.35); }
+  .member-badge.in-group { background: rgba(9,105,218,0.12);  color: #6eb0ff;     border: 1px solid rgba(9,105,218,0.35); }
+  .ap-import-table tr.already-assigned td { opacity: 0.5; }
   .site-select { font-family: var(--mono); font-size: 11px; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text-hi); padding: 5px 7px; width: 100%; outline: none; cursor: pointer; transition: border-color var(--transition); }
   .site-select:focus { border-color: var(--amber); }
   .site-select.mapped { border-color: rgba(63,185,80,0.5); }
@@ -363,6 +369,38 @@
   .report-summary { display: flex; gap: 20px; flex-wrap: wrap; font-family: var(--mono); font-size: 11px; margin-bottom: 10px; align-items: center; }
   .report-summary-stat { color: var(--muted); }
   .report-summary-stat strong { color: var(--text-hi); font-weight: 600; }
+
+  /* ── Sample export ── */
+  .sample-panel { border: 2px solid var(--amber); border-radius: var(--radius); background: rgba(210,153,34,0.06); overflow: hidden; margin-bottom: 20px; }
+  .sample-panel-header { display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: rgba(210,153,34,0.10); border-bottom: 1px solid rgba(210,153,34,0.25); }
+  .sample-panel-title { font-family: var(--mono); font-size: 11px; font-weight: 700; color: var(--amber); letter-spacing: 0.06em; flex: 1; }
+  .sample-badge { display: inline-block; font-family: var(--mono); font-size: 9px; font-weight: 700; padding: 1px 5px; border-radius: 3px; background: var(--amber); color: #000; letter-spacing: 0.05em; vertical-align: middle; }
+  .sample-toggle-wrap { display: flex; align-items: center; gap: 7px; font-family: var(--mono); font-size: 10px; }
+  .sample-toggle { position: relative; display: inline-block; width: 32px; height: 17px; }
+  .sample-toggle input { opacity: 0; width: 0; height: 0; }
+  .sample-toggle-slider { position: absolute; inset: 0; background: var(--border); border-radius: 17px; cursor: pointer; transition: 0.2s; }
+  .sample-toggle-slider::before { content:''; position: absolute; height: 11px; width: 11px; left: 3px; bottom: 3px; background: white; border-radius: 50%; transition: 0.2s; }
+  .sample-toggle input:checked + .sample-toggle-slider { background: var(--amber); }
+  .sample-toggle input:checked + .sample-toggle-slider::before { transform: translateX(15px); }
+  .sample-panel-body { padding: 14px; }
+  .sample-form-row { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; }
+  .sample-form-label { font-family: var(--mono); font-size: 10px; color: var(--muted); width: 80px; flex-shrink: 0; }
+  .sample-form-input { flex: 1; background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius); padding: 5px 8px; font-family: var(--mono); font-size: 11px; color: var(--text-hi); min-width: 0; }
+  .sample-form-input:focus { outline: none; border-color: var(--amber); }
+  .sample-ap-table { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 11px; margin: 10px 0; }
+  .sample-ap-table th { text-align: left; padding: 5px 8px; font-size: 9px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); border-bottom: 1px solid var(--border); }
+  .sample-ap-table td { padding: 4px 4px; border-bottom: 1px solid var(--border); }
+  .sample-ap-table tr:last-child td { border-bottom: none; }
+  .sample-ap-table input { width: 100%; background: var(--surface2); border: 1px solid var(--border); border-radius: 3px; padding: 4px 6px; font-family: var(--mono); font-size: 11px; color: var(--text-hi); }
+  .sample-ap-table input:focus { outline: none; border-color: var(--amber); }
+  .sample-ap-table td:first-child { color: var(--muted); font-size: 10px; text-align: center; width: 24px; }
+  .sample-disabled-msg { padding: 12px 0 4px; font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .sample-warning-banner { display: none; align-items: center; gap: 8px; padding: 8px 14px; background: rgba(210,153,34,0.12); border: 1px solid rgba(210,153,34,0.4); border-radius: var(--radius); font-family: var(--mono); font-size: 11px; color: var(--amber); margin-bottom: 10px; }
+  .sample-warning-banner.visible { display: flex; }
+  .sample-badge-item { margin-left: 4px; }
+  /* report rows for sample groups */
+  .report-row-sample td:first-child { border-left: 3px solid var(--amber); padding-left: 11px; }
+  .report-row-sample td { background: rgba(210,153,34,0.04); }
 
   /* ── NC connection status chip ── */
   .nc-connected-bar { display: none; align-items: center; gap: 7px; margin-top: 8px; padding: 5px 10px; border-radius: var(--radius); background: rgba(63,185,80,0.08); border: 1px solid rgba(63,185,80,0.25); font-family: var(--mono); font-size: 10px; color: var(--green); }
@@ -536,6 +574,10 @@
       </div>
       <div class="sidebar-section" id="imp-run-section" style="display:none">
         <button class="btn btn-primary btn-block" id="imp-run-btn" onclick="runImport()">↑ Migrate APs to New Central</button>
+        <label style="display:flex;align-items:center;gap:7px;margin-top:10px;cursor:pointer;font-family:var(--mono);font-size:10px;color:var(--muted);user-select:none">
+          <input type="checkbox" id="imp-verbose-chk" style="accent-color:var(--blue);cursor:pointer">
+          Verbose logging
+        </label>
       </div>
     </div>
 
@@ -618,6 +660,10 @@
           <div class="empty-icon">⬡</div>
           Load an export manifest from disk,<br>select groups, then assign APs to matching New Central sites.
         </div>
+        <div class="sample-warning-banner" id="imp-sample-warning">
+          <span class="sample-badge">TEST</span>
+          <span>Sample test group is selected — <strong>disable or deselect before a production import</strong></span>
+        </div>
         <div class="hidden" id="imp-report-section">
           <div class="section-heading">Import Summary</div>
           <div id="imp-report-content"></div>
@@ -664,6 +710,41 @@
         <button class="btn btn-outline btn-sm" onclick="loadDataBrowser()">⟳ Refresh</button>
       </div>
       <div class="panel-body">
+
+        <!-- Sample export editor — always visible -->
+        <div class="sample-panel">
+          <div class="sample-panel-header">
+            <span class="sample-panel-title">⚠ Sample Export <span class="sample-badge">TEST ONLY</span></span>
+            <label class="sample-toggle-wrap">
+              <label class="sample-toggle">
+                <input type="checkbox" id="sample-enabled-toggle" onchange="onSampleToggle()">
+                <span class="sample-toggle-slider"></span>
+              </label>
+              <span id="sample-toggle-label" style="color:var(--muted)">Disabled</span>
+            </label>
+          </div>
+          <div class="sample-panel-body">
+            <div id="sample-editor-wrap">
+              <div class="sample-disabled-msg" id="sample-disabled-msg">Enable to configure a test group for import validation. <strong style="color:var(--amber)">Disable before production imports.</strong></div>
+              <div id="sample-form" style="display:none">
+                <div class="sample-form-row">
+                  <span class="sample-form-label">Group Name</span>
+                  <input class="sample-form-input" id="sample-name" maxlength="64" placeholder="SAMPLE-TEST-GROUP" oninput="sampleFormDirty()">
+                </div>
+                <table class="sample-ap-table">
+                  <thead><tr><th>#</th><th>Serial Number</th><th>AP Name</th><th>Model</th><th></th></tr></thead>
+                  <tbody id="sample-ap-tbody"></tbody>
+                </table>
+                <div style="display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap">
+                  <button class="btn btn-outline btn-sm" id="sample-add-btn" onclick="addSampleAp()" style="display:none">+ Add AP (1/5)</button>
+                  <button class="btn btn-primary btn-sm" id="sample-save-btn" onclick="saveSampleConfig()">Save Sample Export</button>
+                  <span id="sample-save-status" style="font-family:var(--mono);font-size:10px;color:var(--muted)"></span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div class="empty" id="data-empty">
           <div class="empty-icon">⬡</div>
           No export found on disk.<br>Run an export first, then return here to browse.
@@ -722,10 +803,14 @@ let ncSites      = [];   // [{site_id, site_name}, ...] from New Central
 let siteMappings = {};   // {group_name: site_id} — current group→site assignments
 let autoMatched  = new Set(); // group names whose mapping was set by exact-name match
 // AP selection state — Import tab
-let apData         = {};          // {group_name: [{serial,name,model,ip,settings}]}
-let apSelections   = {};          // {group_name: Set<serial>} — selected APs per group
-let expandedGroups = new Set();   // group names with AP list currently expanded
-let loadingGroupAPs = new Set();  // groups currently fetching AP data
+let apData              = {};          // {group_name: [{serial,name,model,ip,settings}]}
+let apSelections        = {};          // {group_name: Set<serial>} — selected APs per group
+let expandedGroups      = new Set();   // group names with AP list currently expanded
+let loadingGroupAPs     = new Set();   // groups currently fetching AP data
+let apMemberships       = {};          // {serial: {site_name, device_group}} current NC membership
+let loadingMemberships  = new Set();   // group names whose membership is being fetched
+// Sample export state
+let sampleConfig   = null;        // {enabled, name, aps} from /api/sample
 
 // ── sessionStorage — credentials persist across tab switches, cleared on window close ─
 // Keys are namespaced to avoid collisions with other apps on the same origin.
@@ -772,7 +857,7 @@ function restoreSession() {
 }
 
 // Restore on load
-document.addEventListener('DOMContentLoaded', restoreSession);
+document.addEventListener('DOMContentLoaded', () => { restoreSession(); loadSampleConfig(); });
 
 // ── Tab switching ─────────────────────────────────────────────────────────
 function switchTab(tab) {
@@ -785,7 +870,7 @@ function switchTab(tab) {
   sd.style.display = tab === 'data' ? 'flex' : 'none';
   document.getElementById('sidebar-backup').style.display = tab === 'backup' ? '' : 'none';
   tabs.forEach(t => document.getElementById(`panel-${t}`).classList.toggle('active', t === tab));
-  if (tab === 'data') loadDataBrowser();
+  if (tab === 'data') { loadSampleConfig(); loadDataBrowser(); }
   if (tab === 'backup') loadBackups();
 }
 
@@ -957,7 +1042,7 @@ async function loadManifest() {
     if (!d.ok) throw new Error(d.error);
     const m = d.manifest;
     impGroups    = d.groups;
-    impSelected  = new Set(impGroups.map(g => g.name));
+    impSelected  = new Set();
     const renamedCount = impGroups.filter(g => g.renamed).length;
 
     document.getElementById('imp-manifest-section').classList.remove('hidden');
@@ -1031,6 +1116,16 @@ function setSiteMapping(groupName, rawSiteId) {
   } else {
     siteMappings[groupName] = parseInt(rawSiteId, 10);
     autoMatched.delete(groupName);
+    // Re-apply membership auto-deselect for the new target site
+    const targetSite = (ncSites.find(s => s.site_id === siteMappings[groupName])||{}).site_name;
+    if (targetSite && apSelections[groupName]) {
+      (apData[groupName] || []).forEach(ap => {
+        const mem = apMemberships[ap.serial];
+        if (mem && mem.site_name === targetSite) {
+          apSelections[groupName].delete(ap.serial);
+        }
+      });
+    }
   }
   renderSiteMapping();
   renderImpGroups();
@@ -1072,6 +1167,8 @@ function renderSiteMapping() {
       title="${expanded ? 'Collapse' : 'Expand AP list'}">${expanded ? '▼' : '▶'}</button>`;
 
     // Expanded AP section
+    const targetSiteName   = mappedId !== undefined ? (ncSites.find(s => s.site_id === mappedId)||{}).site_name : null;
+    const fetchingMembers  = loadingMemberships.has(g.name);
     let apSection = '';
     if (expanded) {
       if (loading) {
@@ -1079,13 +1176,22 @@ function renderSiteMapping() {
       } else if (!aps.length) {
         apSection = `<div class="mapping-row-aps" style="font-family:var(--mono);font-size:11px;color:var(--muted)">No APs found in this group's export</div>`;
       } else {
+        const membershipLoading = fetchingMembers
+          ? `<span style="font-family:var(--mono);font-size:9px;color:var(--muted)">Checking memberships…</span>` : '';
         const apRows = aps.map(ap => {
-          const checked  = !selSet || selSet.has(ap.serial);
-          const hostname = (ap.settings && ap.settings.hostname) || ap.name || '—';
-          return `<tr>
+          const mem          = apMemberships[ap.serial];
+          const inSite       = mem && targetSiteName && mem.site_name  === targetSiteName;
+          const expectedGroup= ap.model ? `Aruba_${ap.model}` : null;
+          const inGroup      = mem && expectedGroup && mem.device_group === expectedGroup;
+          const checked      = !inSite && (!selSet || selSet.has(ap.serial));
+          const hostname     = (ap.settings && ap.settings.hostname) || ap.name || '—';
+          const siteTag      = inSite  ? `<span class="member-badge in-site">IN SITE</span>`   : '';
+          const groupTag     = inGroup ? `<span class="member-badge in-group">IN GROUP</span>` : '';
+          return `<tr class="${inSite ? 'already-assigned' : ''}">
             <td><input type="checkbox" ${checked ? 'checked' : ''}
-                 onchange="toggleAp('${esc(g.name)}','${ap.serial}',this.checked)"></td>
-            <td style="font-family:var(--mono);color:var(--text-hi)">${ap.serial}</td>
+                 onchange="toggleAp('${esc(g.name)}','${ap.serial}',this.checked)"
+                 ${inSite ? 'title="Already assigned to this site — deselected automatically"' : ''}></td>
+            <td style="font-family:var(--mono);color:var(--text-hi)">${ap.serial}${siteTag}${groupTag}</td>
             <td>${_escHtml(hostname)}</td>
             <td style="color:var(--muted)">${ap.model || '—'}</td>
             <td style="font-family:var(--mono);font-size:10px;color:var(--muted)">${ap.ip || '—'}</td>
@@ -1096,6 +1202,7 @@ function renderSiteMapping() {
             <span>${selCount} of ${aps.length} AP${aps.length!==1?'s':''} selected for import</span>
             <button class="btn btn-outline btn-sm" onclick="selectAllGroupAps('${esc(g.name)}',true)">All</button>
             <button class="btn btn-outline btn-sm" onclick="selectAllGroupAps('${esc(g.name)}',false)">None</button>
+            ${membershipLoading}
           </div>
           <table class="ap-import-table">
             <thead><tr><th></th><th>Serial</th><th>Name / Hostname</th><th>Model</th><th>IP</th></tr></thead>
@@ -1163,6 +1270,43 @@ async function loadGroupAPs(groupName) {
   }
   loadingGroupAPs.delete(groupName);
   renderSiteMapping();
+  // Kick off membership check in the background if we have NC credentials
+  const url   = document.getElementById('imp-url').value.trim();
+  const token = document.getElementById('imp-token').value.trim();
+  if (url && token && (apData[groupName] || []).length > 0) {
+    loadGroupMemberships(groupName, url, token);
+  }
+}
+
+async function loadGroupMemberships(groupName, url, token) {
+  if (loadingMemberships.has(groupName)) return;
+  const serials = (apData[groupName] || []).map(ap => ap.serial).filter(Boolean);
+  if (!serials.length) return;
+  loadingMemberships.add(groupName);
+  renderSiteMapping();
+  try {
+    const d = await fetch('/api/import/new-central/memberships', {
+      method:  'POST',
+      headers: {'Content-Type': 'application/json'},
+      body:    JSON.stringify({base_url: url, token, serials}),
+    }).then(r => r.json());
+    if (d.ok) {
+      Object.assign(apMemberships, d.memberships);
+      // Auto-deselect APs already in the target site
+      const siteId       = siteMappings[groupName];
+      const targetSite   = siteId !== undefined ? (ncSites.find(s => s.site_id === siteId)||{}).site_name : null;
+      if (targetSite && apSelections[groupName]) {
+        serials.forEach(serial => {
+          const mem = apMemberships[serial];
+          if (mem && mem.site_name === targetSite) {
+            apSelections[groupName].delete(serial);
+          }
+        });
+      }
+    }
+  } catch(_) {}
+  loadingMemberships.delete(groupName);
+  renderSiteMapping();
 }
 
 function toggleAp(groupName, serial, checked) {
@@ -1198,7 +1342,7 @@ function renderImportReport() {
   if (!impSelected.size) { section.classList.add('hidden'); return; }
   section.classList.remove('hidden');
 
-  let willImport = 0, willSkip = 0, totalAPs = 0;
+  let willImport = 0, willSkip = 0, totalAPs = 0, testCount = 0;
 
   const rows = [...impSelected].sort().map(name => {
     const g        = impGroups.find(x => x.name === name);
@@ -1212,17 +1356,24 @@ function renderImportReport() {
     const apCount  = selSet ? selSet.size : baseCount;
 
     if (hasSite) { willImport++; totalAPs += apCount; } else { willSkip++; }
+    const isTest = isSampleGroup(name);
+    if (isTest) testCount++;
 
-    const rowClass = hasSite ? 'report-row-ok' : 'report-row-skip';
+    let rowClass = hasSite ? 'report-row-ok' : 'report-row-skip';
+    if (isTest) rowClass = 'report-row-sample';
+
+    const nameCell = isTest
+      ? `${_escHtml(name)} <span class="sample-badge">TEST</span>`
+      : _escHtml(name);
     const siteCell = hasSite
-      ? `<span style="color:var(--text-hi)">${_escHtml(siteName)}</span>`
+      ? `<span style="color:${isTest ? 'var(--amber)' : 'var(--text-hi)'}">${_escHtml(siteName)}</span>`
       : `<span style="color:var(--amber)">${_escHtml(siteName)}</span>`;
     const apCell = hasSite
       ? `<span style="color:var(--text-hi)">${apCount} AP${apCount !== 1 ? 's' : ''}</span>`
       : `<span style="color:var(--muted)">—</span>`;
 
     return `<tr class="${rowClass}">
-      <td>${_escHtml(name)}</td>
+      <td>${nameCell}</td>
       <td style="color:var(--muted);text-align:center">→</td>
       <td>${siteCell}</td>
       <td style="text-align:right">${apCell}</td>
@@ -1232,7 +1383,8 @@ function renderImportReport() {
   const summary = `<div class="report-summary" style="padding:10px 14px;border-top:1px solid var(--border)">
     <span style="color:var(--green)">✓ ${willImport} group${willImport!==1?'s':''} → New Central</span>
     <span style="color:var(--text-hi)">${totalAPs} AP${totalAPs!==1?'s':''} total</span>
-    ${willSkip ? `<span style="color:var(--amber)">⚠ ${willSkip} group${willSkip!==1?'s':''} will be skipped (no site)</span>` : ''}
+    ${willSkip  ? `<span style="color:var(--amber)">⚠ ${willSkip} group${willSkip!==1?'s':''} will be skipped (no site)</span>` : ''}
+    ${testCount ? `<span style="color:var(--amber)"><span class="sample-badge">TEST</span> ${testCount} test group${testCount!==1?'s':''} — disable before production</span>` : ''}
   </div>`;
 
   content.innerHTML = `<div class="report-wrap">
@@ -1280,22 +1432,28 @@ function renderImpGroups() {
     const gLabels = labelAssignments[g.name] || [];
     const labelPills = gLabels.map(l => labelPillHtml(l)).join('');
     const cls = [impSelected.has(g.name)?'selected':'', activeImpGroup===g.name?'active-browse':''].filter(Boolean).join(' ');
-    const apBadge = `<span class="count-chip" style="font-size:9px;flex-shrink:0">${g.n_aps||0} AP${(g.n_aps||0)!==1?'s':''}</span>`;
-    const mappedId = siteMappings[g.name];
+    const apBadge   = `<span class="count-chip" style="font-size:9px;flex-shrink:0">${g.n_aps||0} AP${(g.n_aps||0)!==1?'s':''}</span>`;
+    const testBadge = isSampleGroup(g.name) ? `<span class="sample-badge sample-badge-item">TEST</span>` : '';
+    const mappedId  = siteMappings[g.name];
     const mapDot = ncSites.length
       ? (mappedId !== undefined
           ? `<span class="map-dot ${autoMatched.has(g.name) ? 'map-dot-auto' : 'map-dot-manual'}"
                    title="${autoMatched.has(g.name) ? 'Auto-matched to site' : 'Manually mapped to site'}"></span>`
           : `<span class="map-dot" style="background:var(--border)" title="No site mapped — will be skipped"></span>`)
       : '';
-    return `<div class="group-item ${cls}" onclick="selectImpGroup('${g.name}')">
+    return `<div class="group-item ${cls}" onclick="selectImpGroup('${g.name}')"
+      style="${isSampleGroup(g.name) ? 'border-left:3px solid var(--amber);' : ''}">
       <input type="checkbox" class="group-checkbox" ${impSelected.has(g.name)?'checked':''}
              onclick="event.stopPropagation();toggleImp('${g.name}')">
       <span class="group-name" title="${title}">${g.name}</span>
-      ${labelPills}${arrow}${apBadge}${mapDot}
+      ${labelPills}${arrow}${apBadge}${testBadge}${mapDot}
     </div>`;
   }).join('');
   document.getElementById('imp-select-count').textContent=`${impSelected.size} of ${impGroups.length} selected`;
+  // Show/hide sample warning banner
+  const hasSampleSelected = sampleConfig && sampleConfig.enabled
+    && impSelected.has(sampleConfig.name);
+  document.getElementById('imp-sample-warning').classList.toggle('visible', !!hasSampleSelected);
   renderImportReport();
 }
 function toggleImp(n){impSelected.has(n)?impSelected.delete(n):impSelected.add(n);renderImpGroups();}
@@ -1379,16 +1537,28 @@ async function runImportNewCentral() {
   resetImpStats(0, 0, 0);
   let total = Object.keys(mappings).length, done = 0, nOk = 0, nFail = 0;
 
+  const verbose = document.getElementById('imp-verbose-chk')?.checked || false;
+
   const {op_id} = await fetch('/api/import/new-central', {
     method: 'POST', headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({base_url: url, token, mappings}),
+    body: JSON.stringify({base_url: url, token, mappings, verbose}),
   }).then(r => r.json());
 
   const es = new EventSource(`/api/import/new-central/progress/${op_id}`);
   es.addEventListener('start', e => {
     const d = JSON.parse(e.data);
     log('imp-log', `Assigning APs for ${d.total} group${d.total!==1?'s':''} → New Central sites`, 'info');
+    if (verbose) log('imp-log', 'Verbose logging enabled', 'debug');
     setProgress('imp', 0, d.total || 1, 'Assigning APs');
+  });
+  es.addEventListener('log', e => {
+    const d = JSON.parse(e.data);
+    // Map backend level to log() class: debug→debug, warn→warn, error→err, else debug
+    const cls = d.level === 'warn' ? 'warn' : d.level === 'error' ? 'err' : 'debug';
+    // Support multi-line messages (e.g. tracebacks) — split into separate log lines
+    (d.message || '').split('\n').filter(l => l.trim()).forEach(line => {
+      log('imp-log', _escHtml(line), cls);
+    });
   });
   es.addEventListener('group_done', e => {
     const d = JSON.parse(e.data); done++;
@@ -1397,7 +1567,11 @@ async function runImportNewCentral() {
     const siteName = (ncSites.find(s => s.site_id === d.site_id) || {}).site_name || `site ${d.site_id}`;
     const apInfo   = d.ap_count ? ` (${d.ap_count} APs)` : '';
     const word     = d.status === 'missing' ? 'export missing' : d.status;
-    log('imp-log', `${d.group} → ${siteName}${apInfo} — ${word}`, d.status === 'ok' ? 'ok' : 'err');
+    const cls      = d.status === 'ok' ? 'ok' : 'err';
+    log('imp-log', `${_escHtml(d.group)} → ${_escHtml(siteName)}${apInfo} — ${word}`, cls);
+    if (d.failed_serials && d.failed_serials.length && verbose) {
+      log('imp-log', `  Failed: ${d.failed_serials.join(', ')}`, 'warn');
+    }
     setProgress('imp', done, total, 'Assigning APs');
     document.getElementById('imp-n-ok').textContent   = nOk;
     document.getElementById('imp-n-skip').textContent = 0;
@@ -1406,7 +1580,16 @@ async function runImportNewCentral() {
   es.addEventListener('complete', e => {
     const d = JSON.parse(e.data);
     log('imp-log', `Complete — ${d.total} group${d.total!==1?'s':''} processed`, 'ok');
-    setStatus('connected', 'AP assignment complete');
+    // Device group summary cards
+    const dgResults = d.dg_results || [];
+    if (dgResults.length) {
+      const dgOk   = dgResults.filter(r => r.ok).length;
+      const dgFail = dgResults.length - dgOk;
+      log('imp-log', `Device groups: ${dgOk} OK${dgFail ? ', ' + dgFail + ' failed' : ''}`,
+          dgFail ? 'warn' : 'ok');
+      dgResults.forEach(r => addDGCard(r));
+    }
+    setStatus('connected', 'Import complete');
     setProgress('imp', total, total, 'Complete');
     document.getElementById('imp-clear-btn').classList.remove('hidden');
     busy = false; es.close();
@@ -1440,7 +1623,168 @@ function addNCImpCard(d) {
   card.innerHTML = `<div><div class="result-name">${siteLabel}${apChip}${idBadge}</div>${steps?`<div class="step-list">${steps}</div>`:''}</div><div class="result-status ${cls}">${statusLabel}</div>`;
   document.getElementById('imp-cards').appendChild(card);
 }
+function addDGCard(r) {
+  const cls  = r.ok ? 'ok' : 'fail';
+  const card = document.createElement('div'); card.className = `result-card ${cls}`;
+  const assigned = r.total - (r.failed_serials || []).length;
+  const apChip = `<span class="count-chip" style="margin-left:6px;font-size:9px">${assigned}/${r.total} APs</span>`;
+  card.innerHTML = `<div><div class="result-name">Device group: ${_escHtml(r.group_name)}${apChip}</div></div><div class="result-status ${cls}">${r.ok ? 'OK' : 'FAILED'}</div>`;
+  document.getElementById('imp-cards').appendChild(card);
+}
 function clearImportResults(){document.getElementById('imp-results').classList.add('hidden');document.getElementById('imp-clear-btn').classList.add('hidden');}
+
+// ── Sample export ─────────────────────────────────────────────────────────
+async function loadSampleConfig() {
+  try {
+    const d = await fetch('/api/sample').then(r => r.json());
+    if (d.ok) {
+      sampleConfig = {enabled: d.enabled, name: d.name, aps: d.aps};
+      renderSampleEditor();
+    }
+  } catch(_) {}
+}
+
+// Rebuild only the AP table rows + add button.
+// Never touches the toggle, label, form visibility, or group-name input.
+// This is the ONLY render function called by add/remove/save operations.
+function _renderApTable() {
+  if (!sampleConfig) return;
+  const aps    = sampleConfig.aps || [];
+  const canDel = aps.length > 1;
+  const canAdd = aps.length < 5;
+
+  const tbody = document.getElementById('sample-ap-tbody');
+  if (!tbody) return;
+  tbody.innerHTML = aps.map((ap, i) => `<tr>
+    <td>${i + 1}</td>
+    <td><input id="sample-serial-${i}" value="${_escHtml(ap.serial)}" placeholder="Serial number" oninput="sampleFormDirty()"></td>
+    <td><input id="sample-apname-${i}" value="${_escHtml(ap.name)}"   placeholder="AP name" oninput="sampleFormDirty()"></td>
+    <td><input id="sample-model-${i}"  value="${_escHtml(ap.model)}"  placeholder="AP-635"  oninput="sampleFormDirty()"></td>
+    <td style="width:28px;text-align:center">${canDel
+      ? `<button onclick="removeSampleAp(${i})" title="Remove AP" style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:13px;line-height:1;padding:2px 4px" onmouseover="this.style.color='var(--red,#f85149)'" onmouseout="this.style.color='var(--muted)'">✕</button>`
+      : ''}</td>
+  </tr>`).join('');
+
+  const addBtn = document.getElementById('sample-add-btn');
+  if (addBtn) {
+    addBtn.style.display = canAdd ? '' : 'none';
+    addBtn.textContent   = `+ Add AP (${aps.length}/5)`;
+  }
+}
+
+// Full re-render including toggle and form visibility.
+// Only called by loadSampleConfig() on initial load.
+// Add/remove/save use _renderApTable() instead so the toggle is never touched.
+function renderSampleEditor() {
+  if (!sampleConfig) return;
+  const toggle = document.getElementById('sample-enabled-toggle');
+  const label  = document.getElementById('sample-toggle-label');
+  const form   = document.getElementById('sample-form');
+  const disMsg = document.getElementById('sample-disabled-msg');
+
+  toggle.checked = sampleConfig.enabled;
+  label.textContent = sampleConfig.enabled ? 'Enabled' : 'Disabled';
+  label.style.color = sampleConfig.enabled ? 'var(--amber)' : 'var(--muted)';
+  form.style.display   = sampleConfig.enabled ? '' : 'none';
+  disMsg.style.display = sampleConfig.enabled ? 'none' : '';
+
+  const nameEl = document.getElementById('sample-name');
+  if (nameEl) nameEl.value = sampleConfig.name || '';
+  document.getElementById('sample-save-status').textContent = '';
+
+  _renderApTable();
+}
+
+// Read current AP input values back into sampleConfig.aps without touching enabled.
+function _captureSampleFormValues() {
+  if (!sampleConfig) return;
+  sampleConfig.aps = sampleConfig.aps.map((ap, i) => ({
+    serial: (document.getElementById(`sample-serial-${i}`)?.value ?? ap.serial).trim(),
+    name:   (document.getElementById(`sample-apname-${i}`)?.value ?? ap.name).trim(),
+    model:  (document.getElementById(`sample-model-${i}`)?.value  ?? ap.model).trim() || 'AP-635',
+  }));
+}
+
+function addSampleAp() {
+  if (!sampleConfig || sampleConfig.aps.length >= 5) return;
+  _captureSampleFormValues();
+  sampleConfig.aps.push({serial: '', name: '', model: 'AP-635'});
+  _renderApTable();
+  sampleFormDirty();
+  const newIdx = sampleConfig.aps.length - 1;
+  setTimeout(() => document.getElementById(`sample-serial-${newIdx}`)?.focus(), 50);
+}
+
+function removeSampleAp(i) {
+  if (!sampleConfig || sampleConfig.aps.length <= 1) return;
+  _captureSampleFormValues();
+  sampleConfig.aps.splice(i, 1);
+  _renderApTable();
+  sampleFormDirty();
+}
+
+function sampleFormDirty() {
+  document.getElementById('sample-save-status').textContent = '— unsaved changes';
+  document.getElementById('sample-save-status').style.color = 'var(--amber)';
+}
+
+// Called only by the toggle checkbox — updates form visibility and persists.
+// Never calls renderSampleEditor() to avoid re-writing toggle.checked.
+function onSampleToggle() {
+  const enabled = document.getElementById('sample-enabled-toggle').checked;
+  if (sampleConfig) sampleConfig.enabled = enabled;
+  const label  = document.getElementById('sample-toggle-label');
+  const form   = document.getElementById('sample-form');
+  const disMsg = document.getElementById('sample-disabled-msg');
+  label.textContent    = enabled ? 'Enabled' : 'Disabled';
+  label.style.color    = enabled ? 'var(--amber)' : 'var(--muted)';
+  form.style.display   = enabled ? '' : 'none';
+  disMsg.style.display = enabled ? 'none' : '';
+  saveSampleConfig();
+}
+
+async function saveSampleConfig() {
+  _captureSampleFormValues();
+  const name    = (document.getElementById('sample-name').value || '').trim();
+  const enabled = sampleConfig ? sampleConfig.enabled : false;
+  const aps     = sampleConfig ? sampleConfig.aps : [];
+
+  const statusEl = document.getElementById('sample-save-status');
+  statusEl.textContent = 'Saving…';
+  statusEl.style.color = 'var(--muted)';
+
+  try {
+    const d = await fetch('/api/sample', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({enabled, name, aps}),
+    }).then(r => r.json());
+
+    if (!d.ok) {
+      statusEl.textContent = `Error: ${d.error}`;
+      statusEl.style.color = 'var(--red, #f85149)';
+      return;
+    }
+    // Update in-memory aps from server (may have been trimmed/cleaned).
+    // Do NOT call renderSampleEditor() — that would reset the toggle.
+    if (sampleConfig) {
+      sampleConfig.name = d.name;
+      sampleConfig.aps  = d.aps;
+    }
+    _renderApTable();
+    statusEl.textContent = 'Saved ✓';
+    statusEl.style.color = 'var(--green)';
+    if (dataGroups.length) loadDataBrowser();
+    if (impGroups.length) { renderImpGroups(); renderImportReport(); }
+  } catch(e) {
+    statusEl.textContent = `Error: ${e.message}`;
+    statusEl.style.color = 'var(--red, #f85149)';
+  }
+}
+
+function isSampleGroup(name) {
+  return !!(sampleConfig && sampleConfig.enabled && sampleConfig.name === name);
+}
 
 // ── Data browser ──────────────────────────────────────────────────────────
 async function loadDataBrowser() {
@@ -1502,11 +1846,13 @@ function renderDataGroupList() {
           title="${assigned?'Remove':'Add'} label">${l}</span>`;
       }).join('')
     }</div>` : '';
-    const apBadge = `<span class="count-chip" style="font-size:9px;flex-shrink:0">${g.n_aps||0} AP${(g.n_aps||0)!==1?'s':''}</span>`;
-    return `<div class="group-item ${activeDataGroup===g.name?'active-browse':''}" onclick="selectDataGroup('${g.name}')">
+    const apBadge   = `<span class="count-chip" style="font-size:9px;flex-shrink:0">${g.n_aps||0} AP${(g.n_aps||0)!==1?'s':''}</span>`;
+    const testBadge = g.sample ? `<span class="sample-badge sample-badge-item">TEST</span>` : '';
+    return `<div class="group-item ${activeDataGroup===g.name?'active-browse':''}" onclick="selectDataGroup('${g.name}')"
+      style="${g.sample ? 'border-left:3px solid var(--amber);' : ''}">
       <span class="group-name" title="${g.renamed ? g.name+' → '+g.import_name : g.name}">${g.name}</span>
       ${g.renamed ? `<span class="rename-arrow" title="Will be imported as ${g.import_name}">→ ${g.import_name}</span>` : ''}
-      ${apBadge}
+      ${apBadge}${testBadge}
       ${labelChipsHtml}
     </div>`;
   }).join('');
