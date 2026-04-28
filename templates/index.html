@@ -272,7 +272,19 @@
   .progress-bar  { height: 3px; background: var(--border); border-radius: 2px; overflow: hidden; }
   .progress-fill { height: 100%; background: var(--amber); border-radius: 2px; transition: width 300ms ease; width: 0%; }
   .results-grid { display: grid; gap: 8px; }
-  .result-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 16px; display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 12px; animation: fadeIn 200ms ease; }
+  .result-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 16px; display: flex; flex-direction: column; gap: 6px; animation: fadeIn 200ms ease; }
+  .result-card-top { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+  .ap-detail { margin-top: 2px; }
+  .ap-detail summary { font-family: var(--mono); font-size: 10px; color: var(--muted); cursor: pointer; user-select: none; list-style: none; display: flex; align-items: center; gap: 5px; }
+  .ap-detail summary::-webkit-details-marker { display: none; }
+  .ap-detail summary::before { content: '▶'; font-size: 8px; transition: transform 0.15s; display: inline-block; }
+  .ap-detail[open] summary::before { transform: rotate(90deg); }
+  .ap-detail summary:hover { color: var(--text); }
+  .ap-detail-list { margin-top: 6px; display: flex; flex-direction: column; gap: 3px; padding-left: 4px; }
+  .ap-detail-row { font-family: var(--mono); font-size: 10px; display: flex; gap: 6px; align-items: baseline; }
+  .ap-detail-row.success { color: var(--green); }
+  .ap-detail-row.skipped { color: var(--muted); }
+  .ap-detail-row.failed  { color: var(--red); }
   @keyframes fadeIn { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:none; } }
   .result-card.ok   { border-left: 3px solid var(--green); }
   .result-card.warn { border-left: 3px solid var(--amber); }
@@ -1133,13 +1145,14 @@ function setSiteMapping(groupName, rawSiteId) {
 
 function renderSiteMapping() {
   const section = document.getElementById('imp-mapping-section');
-  if (!ncSites.length || !impGroups.length) { section.classList.add('hidden'); return; }
+  const selectedGroups = impGroups.filter(g => impSelected.has(g.name));
+  if (!ncSites.length || !selectedGroups.length) { section.classList.add('hidden'); return; }
   section.classList.remove('hidden');
 
-  const mappedCount = Object.keys(siteMappings).length;
+  const mappedCount = selectedGroups.filter(g => siteMappings[g.name] !== undefined).length;
   const esc = s => s.replace(/'/g, "\\'");
 
-  const rows = impGroups.map(g => {
+  const rows = selectedGroups.map(g => {
     const mappedId  = siteMappings[g.name];
     const isAuto    = autoMatched.has(g.name);
     const expanded  = expandedGroups.has(g.name);
@@ -1232,8 +1245,8 @@ function renderSiteMapping() {
 
   document.getElementById('imp-mapping-content').innerHTML = `
     <div style="font-family:var(--mono);font-size:10px;color:var(--muted);margin-bottom:8px">
-      ${mappedCount} of ${impGroups.length} group${impGroups.length!==1?'s':''} mapped
-      ${mappedCount < impGroups.length ? ` <span style="color:var(--amber)">· ${impGroups.length - mappedCount} unmapped (will be skipped)</span>` : ''}
+      ${mappedCount} of ${selectedGroups.length} group${selectedGroups.length!==1?'s':''} mapped
+      ${mappedCount < selectedGroups.length ? ` <span style="color:var(--amber)">· ${selectedGroups.length - mappedCount} unmapped (will be skipped)</span>` : ''}
     </div>
     <div class="mapping-list">${rows}</div>`;
   renderImportReport();
@@ -1604,31 +1617,74 @@ function addImpCard(d){
   const steps=(d.steps||[]).map(s=>`<div class="step"><div class="step-dot ${s.ok?'ok':'fail'}"></div>${s.name}</div>`).join('');
   const label = d.renamed && d.import_name && d.import_name !== d.group
     ? `${d.group} <span class="rename-arrow">→ ${d.import_name}</span>` : d.group;
-  card.innerHTML=`<div><div class="result-name">${label}</div>${steps?`<div class="step-list">${steps}</div>`:''}</div><div class="result-status ${cls}">${cls==='skip'?'SKIPPED':cls.toUpperCase()}</div>`;
+  card.innerHTML=`<div class="result-card-top"><div><div class="result-name">${label}</div>${steps?`<div class="step-list">${steps}</div>`:''}</div><div class="result-status ${cls}">${cls==='skip'?'SKIPPED':cls.toUpperCase()}</div></div>`;
   document.getElementById('imp-cards').appendChild(card);
 }
 
+// Look up an AP's hostname/name from any loaded group data
+function _apHostname(serial) {
+  for (const aps of Object.values(apData)) {
+    const ap = (aps || []).find(a => a.serial === serial);
+    if (ap) return (ap.settings && ap.settings.hostname) || ap.name || null;
+  }
+  return null;
+}
+
+// Build a collapsible AP list for result cards
+function _apDetailHtml(serials, failedSerials, skippedSerials) {
+  if (!serials || !serials.length) return '';
+  const failSet = new Set(failedSerials || []);
+  const skipSet = new Set(skippedSerials || []);
+  const rows = serials.map(s => {
+    const hostname = _apHostname(s);
+    const label    = hostname ? `${s} — ${_escHtml(hostname)}` : s;
+    if (failSet.has(s))  return `<div class="ap-detail-row failed">✗ ${label}</div>`;
+    if (skipSet.has(s))  return `<div class="ap-detail-row skipped">– ${label} (already assigned)</div>`;
+    return `<div class="ap-detail-row success">✓ ${label}</div>`;
+  }).join('');
+  const nFail    = failSet.size;
+  const nSkip    = skipSet.size;
+  const nMoved   = serials.length - nFail - nSkip;
+  const parts    = [];
+  if (nMoved)  parts.push(`${nMoved} moved`);
+  if (nSkip)   parts.push(`${nSkip} already assigned`);
+  if (nFail)   parts.push(`${nFail} failed`);
+  return `<details class="ap-detail"><summary>${parts.join(', ')}</summary><div class="ap-detail-list">${rows}</div></details>`;
+}
+
 function addNCImpCard(d) {
-  const cls      = d.status === 'ok' ? 'ok' : d.status === 'missing' ? 'warn' : 'fail';
-  const card     = document.createElement('div'); card.className = `result-card ${cls}`;
-  const steps    = (d.steps||[]).map(s =>
+  const cls       = d.status === 'ok' ? 'ok' : d.status === 'missing' ? 'warn' : 'fail';
+  const card      = document.createElement('div'); card.className = `result-card ${cls}`;
+  const steps     = (d.steps||[]).map(s =>
     `<div class="step"><div class="step-dot ${s.ok?'ok':'fail'}"></div><span title="${(s.detail||'').replace(/"/g,'&quot;')}">${s.name}</span></div>`
   ).join('');
-  const siteName  = (ncSites.find(s => s.site_id === d.site_id) || {}).site_name || `site_id=${d.site_id}`;
-  const siteLabel = siteName !== d.group
+  const siteName   = (ncSites.find(s => s.site_id === d.site_id) || {}).site_name || `site_id=${d.site_id}`;
+  const siteLabel  = siteName !== d.group
     ? `${d.group} <span class="rename-arrow">→ ${siteName}</span>` : d.group;
-  const apChip    = d.ap_count ? `<span class="count-chip" style="margin-left:6px;font-size:9px">${d.ap_count} APs</span>` : '';
-  const idBadge   = d.site_id  ? `<span class="count-chip" style="margin-left:4px;font-size:9px;color:var(--muted)">id ${d.site_id}</span>` : '';
+  const apChip     = d.ap_count ? `<span class="count-chip" style="margin-left:6px;font-size:9px">${d.ap_count} APs</span>` : '';
+  const idBadge    = d.site_id  ? `<span class="count-chip" style="margin-left:4px;font-size:9px;color:var(--muted)">id ${d.site_id}</span>` : '';
   const statusLabel = d.status === 'missing' ? 'MISSING' : cls.toUpperCase();
-  card.innerHTML = `<div><div class="result-name">${siteLabel}${apChip}${idBadge}</div>${steps?`<div class="step-list">${steps}</div>`:''}</div><div class="result-status ${cls}">${statusLabel}</div>`;
+  const apDetail   = _apDetailHtml(d.serials, d.failed_serials, []);
+  card.innerHTML = `
+    <div class="result-card-top">
+      <div><div class="result-name">${siteLabel}${apChip}${idBadge}</div>${steps?`<div class="step-list">${steps}</div>`:''}</div>
+      <div class="result-status ${cls}">${statusLabel}</div>
+    </div>
+    ${apDetail}`;
   document.getElementById('imp-cards').appendChild(card);
 }
 function addDGCard(r) {
-  const cls  = r.ok ? 'ok' : 'fail';
-  const card = document.createElement('div'); card.className = `result-card ${cls}`;
-  const assigned = r.total - (r.failed_serials || []).length;
-  const apChip = `<span class="count-chip" style="margin-left:6px;font-size:9px">${assigned}/${r.total} APs</span>`;
-  card.innerHTML = `<div><div class="result-name">Device group: ${_escHtml(r.group_name)}${apChip}</div></div><div class="result-status ${cls}">${r.ok ? 'OK' : 'FAILED'}</div>`;
+  const cls      = r.ok ? 'ok' : 'fail';
+  const card     = document.createElement('div'); card.className = `result-card ${cls}`;
+  const assigned = r.total - (r.failed_serials || []).length - (r.skipped_serials || []).length;
+  const apChip   = `<span class="count-chip" style="margin-left:6px;font-size:9px">${assigned}/${r.total} APs</span>`;
+  const apDetail = _apDetailHtml(r.serials, r.failed_serials, r.skipped_serials);
+  card.innerHTML = `
+    <div class="result-card-top">
+      <div class="result-name">Device group: ${_escHtml(r.group_name)}${apChip}</div>
+      <div class="result-status ${cls}">${r.ok ? 'OK' : 'FAILED'}</div>
+    </div>
+    ${apDetail}`;
   document.getElementById('imp-cards').appendChild(card);
 }
 function clearImportResults(){document.getElementById('imp-results').classList.add('hidden');document.getElementById('imp-clear-btn').classList.add('hidden');}

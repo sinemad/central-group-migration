@@ -801,6 +801,7 @@ def start_import_new_central():
                     "site_id":        site_id,
                     "status":         "ok" if ok_all else "fail",
                     "ap_count":       len(serials),
+                    "serials":        serials,
                     "failed_serials": failed,
                     "steps": [{"name": "Assign APs", "ok": ok_all,
                                "detail": f"{assigned}/{len(serials)} assigned"}],
@@ -938,6 +939,7 @@ def start_import_new_central():
                             existing_dg.add(dg_name)
 
                     dg_failed: list[str] = []
+                    already:   list[str] = []
                     assign_ok = True
                     if group_ok:
                         # Skip APs already in this group
@@ -976,11 +978,13 @@ def start_import_new_central():
                         "message": f"  {dg_name}: {moved}/{len(serials)} APs moved — {'OK' if overall else 'FAILED'}",
                     })
                     dg_results.append({
-                        "model":          model,
-                        "group_name":     dg_name,
-                        "total":          len(serials),
-                        "ok":             overall,
-                        "failed_serials": dg_failed,
+                        "model":           model,
+                        "group_name":      dg_name,
+                        "total":           len(serials),
+                        "ok":              overall,
+                        "serials":         serials,
+                        "skipped_serials": already,
+                        "failed_serials":  dg_failed,
                     })
 
             _emit(q, "complete", {"total": len(groups), "dg_results": dg_results})

@@ -1,4 +1,4 @@
-# HPE Aruba Central — Group Migration Tool
+# HPE Aruba Central Group Migration Tool
 ## Full Technical Documentation
 
 ---
@@ -14,8 +14,8 @@
 7. [Web UI Guide](#7-web-ui-guide)
 8. [CLI Scripts Guide](#8-cli-scripts-guide)
 9. [Export File Format](#9-export-file-format)
-10. [pycentral SDK Reference](#10-pycentral-sdk-reference)
-11. [API Reference](#11-api-reference)
+10. [New Central API Surface](#10-new-central-api-surface)
+11. [Flask HTTP API Reference](#11-flask-http-api-reference)
 12. [Troubleshooting](#12-troubleshooting)
 13. [Extending the Tool](#13-extending-the-tool)
 
@@ -23,24 +23,38 @@
 
 ## 1. Overview
 
-This tool exports group configurations from one HPE Aruba Classic Central
-instance and re-imports them to another. It is designed specifically for
-**AOS10 UI groups** — groups where device configuration is managed via the
-Central web interface rather than CLI templates.
+This tool migrates access point configuration from an HPE Aruba **Classic
+Central** tenant to **New Central**. It is designed specifically for
+**AOS10 UI groups** — groups where device configuration is managed through
+the Central web interface rather than CLI templates.
 
-**What is exported per group:**
+### Migration model
+
+| Classic Central | New Central |
+|-----------------|-------------|
+| Group | Site (location) + Device group (config profile) |
+| AP in a group | AP assigned to a site AND moved to a model-based device group |
+
+The tool exports group configuration and AP inventory from Classic Central
+to disk, then uses a visual mapping workflow to assign those APs to the
+correct sites and device groups in New Central.
+
+### What is exported per group
 
 | File | Contents | Condition |
 |------|----------|-----------|
 | `properties.json` | Allowed device types, AOS10 flag, monitor-only flags | All groups |
-| `ap_cli_config.json` | Full AOS10 CLI configuration blob | IAP groups only |
-| `country.json` | RF country code | IAP groups only |
+| `ap_cli_config.json` | Full AOS10 CLI configuration blob | IAP groups |
+| `country.json` | RF country code | IAP groups |
+| `ap_inventory.json` | Serial, model, hostname, IP for each AP | IAP groups |
+| `ap_settings/<serial>.json` | Per-AP hostname/radio settings | IAP groups |
 
-**What is not exported:**
+### What is not in scope (first phase)
 
-- Template groups (not supported — tool is AOS10 UI groups only)
-- Device assignments (devices must be re-assigned to groups separately)
-- Labels and sites (separate API category, not in scope)
+- Template groups
+- WLAN profiles, RF profiles, security policies (separate export steps,
+  to be added in future phases)
+- Non-AP device types (switches, controllers)
 - Firmware compliance policies
 
 ---
@@ -49,52 +63,60 @@ Central web interface rather than CLI templates.
 
 ```
 central-migration/
-├── app.py                 # Flask backend — all routes, SSE, orchestration
-├── exporters.py           # Per-data-type export/import logic
-│                          #   shared by both the web UI and CLI scripts
-├── export_groups.py       # Standalone CLI export script
-├── import_groups.py       # Standalone CLI import script
+├── app.py                   # Flask backend — all routes, SSE, orchestration
+├── exporters.py             # Per-data-type export/import registry
+├── new_central_importer.py  # New Central site and device group helpers
+├── export_groups.py         # Standalone CLI export script
+├── import_groups.py         # Standalone CLI import script
 ├── templates/
-│   └── index.html         # Single-file web UI (Export / Import / Data tabs)
-├── exports/               # Runtime data directory — bind-mounted as Docker volume
+│   └── index.html           # Single-file web UI (Export / Import / Data tabs)
+├── exports/                 # Runtime data — bind-mounted as Docker volume
 │   ├── manifest.json
+│   ├── .sample_config.json  # Sample export config (if enabled)
 │   └── <group-name>/
 │       ├── properties.json
 │       ├── ap_cli_config.json
-│       └── country.json
+│       ├── ap_inventory.json
+│       └── ap_settings/
+│           └── <serial>.json
 ├── requirements.txt
 ├── Dockerfile
-├── docker-compose.yml
-└── .dockerignore
+└── docker-compose.yml
 ```
 
-**Request flow (web UI):**
+### Request flow
 
 ```
-Browser
+Browser (HTTP + SSE)
   │
-  │  HTTP + SSE
   ▼
-Flask (gunicorn, 1 worker / 8 threads)
-  │  app.py routes
+Flask / gunicorn  (1 worker, 8 threads)
   │
-  ├── /api/connect        ──► pycentral.ArubaCentralBase.command()
-  ├── /api/export         ──► background thread ──► exporters.py ──► pycentral
-  ├── /api/export/progress/<id>  ──► SSE stream from queue
-  ├── /api/import         ──► background thread ──► exporters.py ──► pycentral
-  ├── /api/import/progress/<id>  ──► SSE stream from queue
-  ├── /api/groups         ──► reads exports/ directory from disk
-  ├── /api/groups/<name>  ──► reads exports/<name>/ from disk
-  └── /health             ──► {"ok": true}
+  ├── GET  /                              Serve index.html
+  ├── POST /api/connect                   Test creds, return groups
+  ├── POST /api/export                    Start background export thread
+  ├── GET  /api/export/progress/<id>      SSE stream
+  ├── GET  /api/groups                    List exports on disk
+  ├── GET  /api/groups/<name>             Group detail (APs, CLI config)
+  ├── POST /api/import                    Start background Classic import thread
+  ├── GET  /api/import/progress/<id>      SSE stream
+  ├── POST /api/import/new-central        Start background New Central import
+  ├── GET  /api/import/new-central/progress/<id>  SSE stream
+  ├── POST /api/import/new-central/sites          Fetch NC sites
+  ├── POST /api/import/new-central/memberships    Check AP site/group membership
+  ├── GET  /api/sample                    Read sample export config
+  ├── POST /api/sample                    Save sample export config
+  └── GET  /health                        Health check
 ```
 
-**Why single gunicorn worker:**
+### Why single gunicorn worker
+
 Export and import operations push progress events into `_progress_queues`,
 an in-process Python dict. SSE subscriber threads read from this same dict.
-Multiple gunicorn workers each have isolated memory — an export started in
-worker A would be invisible to a subscriber connected to worker B, causing
-the progress stream to hang. One worker with eight threads is the correct
-model for this pattern.
+Multiple workers each have isolated memory — an export started in worker A
+is invisible to an SSE subscriber connected to worker B, causing the
+progress stream to hang silently. **One worker with eight threads is the
+required configuration.**
 
 ---
 
@@ -103,70 +125,25 @@ model for this pattern.
 ### requirements.txt
 
 ```
-pycentral==1.4.1
+pycentral>=2.0a17
 flask==3.1.0
 flask-cors==5.0.0
 gunicorn==23.0.0
 ```
 
-### Docker build verification
-
-The Docker `builder` stage runs:
-
-```dockerfile
-RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
-```
-
-This was verified by simulating the build stage locally — installing all
-four packages into an isolated prefix and importing them:
-
-```
-pycentral        : 1.4.1   ✓  installed from PyPI
-flask            : 3.1.0   ✓  installed from PyPI
-flask-cors       : 5.0.0   ✓  installed from PyPI
-gunicorn         : 23.0.0  ✓  installed from PyPI
-```
-
-Key classes confirmed importable from the installed prefix:
-
-```python
-from pycentral.base import ArubaCentralBase   # ✓
-from pycentral.configuration import Groups    # ✓
-```
-
-pycentral 1.4.1 pulls in its own pinned dependencies automatically:
-
-```
-requests==2.31.0
-PyYAML==6.0.1
-urllib3==2.2.2
-certifi==2024.7.4
-```
-
-These are installed alongside pycentral in the same build stage and copied
-into the runtime image. You do not need to list them in `requirements.txt`.
+`pycentral >= 2.0a17` (pre-release) is required for the
+`pycentral.classic` module used by this tool.
 
 ### Verifying inside a running container
 
 ```bash
 docker exec central-migration python -c "
-import pycentral
-from pycentral.base import ArubaCentralBase
-from pycentral.configuration import Groups
-import flask, gunicorn
 import importlib.metadata
-for pkg in ['pycentral', 'flask', 'flask-cors', 'gunicorn']:
+for pkg in ['flask', 'flask-cors', 'gunicorn']:
     print(pkg, importlib.metadata.version(pkg))
+from pycentral.classic.base import ArubaCentralBase
+print('pycentral.classic OK')
 "
-```
-
-Expected output:
-
-```
-pycentral 1.4.1
-flask 3.1.0
-flask-cors 5.0.0
-gunicorn 23.0.0
 ```
 
 ---
@@ -182,110 +159,66 @@ gunicorn 23.0.0
 ### Build and start
 
 ```bash
-# Clone or copy the project directory, then:
 docker compose up -d
 ```
 
-`docker compose up` triggers a full build on first run. During the build,
-pip downloads and installs pycentral and all other dependencies from PyPI.
-You can watch this happen:
+On first run, `docker compose up` triggers a full image build. To watch
+the build output:
 
 ```bash
 docker compose build --progress=plain
 ```
 
-You will see output similar to:
-
-```
-#7 [builder 3/3] RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
-#7 0.812 Collecting pycentral==1.4.1
-#7 1.043   Downloading pycentral-1.4.1-py3-none-any.whl (73 kB)
-#7 1.218 Collecting flask==3.1.0
-#7 1.389   Downloading flask-3.1.0-py3-none-any.whl (102 kB)
-#7 1.502 Collecting flask-cors==5.0.0
-#7 1.598   Downloading flask_cors-5.0.0-py2.py3-none-any.whl (14 kB)
-#7 1.701 Collecting gunicorn==23.0.0
-#7 1.798   Downloading gunicorn-23.0.0-py3-none-any.whl (85 kB)
-...
-#7 DONE
-```
-
-### Open the UI
-
-```
-http://localhost:8000
-```
-
-### Common Docker Compose commands
+### Common commands
 
 ```bash
-# Start in background
-docker compose up -d
-
 # View live logs
 docker compose logs -f
 
 # Rebuild after code changes
 docker compose up -d --build
 
-# Stop and remove container (exports/ data is preserved on host)
+# Stop (exports/ data preserved on host)
 docker compose down
 
-# Stop, remove container and volume
+# Stop and remove bind-mount data
 docker compose down -v
 
-# Check health status
+# Check container health
 docker inspect central-migration --format='{{.State.Health.Status}}'
 ```
 
 ### Exported data location
 
-The `exports/` directory is bind-mounted from the host:
-
 ```yaml
+# docker-compose.yml
 volumes:
   - ./exports:/app/exports
 ```
 
-This means all exported group data is written to `./exports/` relative to
-the `docker-compose.yml` file on the host machine. The data persists across
-container restarts, image rebuilds, and `docker compose down`.
+All exported group data is written to `./exports/` on the host and persists
+across container restarts and image rebuilds.
 
-### Changing the port
-
-Edit `docker-compose.yml`:
+### Changing the host port
 
 ```yaml
+# docker-compose.yml
 ports:
-  - "9090:8000"   # expose on host port 9090 instead of 8000
+  - "9090:8000"   # host port 9090 → container port 8000
 ```
 
-The container always listens on `8000` internally. Only the host-side port
-changes.
-
-### Running behind a reverse proxy (nginx example)
+### Reverse proxy (nginx)
 
 ```nginx
-server {
-    listen 80;
-    server_name central-migration.internal;
-
-    location / {
-        proxy_pass         http://localhost:8000;
-        proxy_http_version 1.1;
-
-        # Required for SSE (Server-Sent Events)
-        proxy_set_header   Connection '';
-        proxy_buffering    off;
-        proxy_cache        off;
-        proxy_read_timeout 180s;
-    }
+location / {
+    proxy_pass         http://localhost:8000;
+    proxy_http_version 1.1;
+    proxy_set_header   Connection '';
+    proxy_buffering    off;        # required for SSE
+    proxy_cache        off;
+    proxy_read_timeout 180s;
 }
 ```
-
-The `proxy_buffering off` and `proxy_read_timeout 180s` settings are
-critical — without them, SSE progress streams will be buffered or cut off
-mid-export.
 
 ---
 
@@ -295,72 +228,54 @@ mid-export.
 python3 -m venv .venv
 source .venv/bin/activate        # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-
-python app.py
-# Starts Flask dev server at http://localhost:5000
+python app.py                    # Dev server at http://localhost:5000
 ```
 
-The dev server uses Flask's built-in reloader — save any `.py` file and
-the server restarts automatically. Do not use the dev server in production.
+Flask's built-in reloader restarts the server automatically when any `.py`
+file is saved. Do not use the dev server in production.
 
 ### Running the CLI scripts locally
 
 ```bash
-# Export
 CENTRAL_BASE_URL=https://apigw-prod2.central.arubanetworks.com \
-CENTRAL_TOKEN=<your-token> \
+CENTRAL_TOKEN=<token> \
 python export_groups.py
 
-# Import
 CENTRAL_BASE_URL=https://apigw-prod2.central.arubanetworks.com \
 CENTRAL_TOKEN=<new-tenant-token> \
 python import_groups.py
 ```
 
-Alternatively, edit `central_info` directly in each script.
-
 ---
 
 ## 6. Authentication
 
-### Access token (recommended)
-
-The tool uses the access token authentication path of `ArubaCentralBase`.
-This is the most secure approach — credentials are not stored or cached.
+### Access token
 
 ```python
 central_info = {
     "base_url": "https://apigw-prod2.central.arubanetworks.com",
-    "token": {
-        "access_token": "<api-gateway-access-token>"
-    }
+    "token": {"access_token": "<api-gateway-access-token>"}
 }
 conn = ArubaCentralBase(central_info=central_info, token_store=None, ssl_verify=True)
 ```
 
-### Finding your base URL
+Tokens are valid for 2 hours. Generate from **Maintain → Organization →
+Platform Integration → API Gateway → My Apps & Tokens → Generate Token**.
 
-Base URLs are cluster-specific. Common examples:
+### Cluster base URLs
 
-| Cluster | Base URL |
-|---------|----------|
+| Region | Base URL |
+|--------|----------|
 | US-1 | `https://apigw-prod2.central.arubanetworks.com` |
 | US-2 | `https://apigw-prod2-eu.central.arubanetworks.com` |
 | EU-1 | `https://eu-apigw.central.arubanetworks.com` |
 | APAC-1 | `https://apigw-apac.central.arubanetworks.com` |
 
-Confirm your cluster URL from Central UI: **Maintain → Organization →
-Platform Integration → API Gateway**.
+### OAuth credentials (auto-refresh)
 
-### Generating an access token
-
-1. In Central UI, navigate to **Maintain → Organization → Platform Integration → API Gateway**
-2. Click **My Apps & Tokens**
-3. Select your application, then click **Generate Token**
-4. Copy the `access_token` value — it is valid for 2 hours
-
-Tokens expire after 2 hours. For long-running operations, use the OAuth
-credentials approach which enables automatic token refresh:
+For operations longer than 2 hours, use OAuth credentials so tokens refresh
+automatically:
 
 ```python
 central_info = {
@@ -373,181 +288,163 @@ central_info = {
 }
 ```
 
-The customer ID is visible in the top-right corner of the Central UI (the
-person icon → account info).
+The customer ID is shown in the top-right corner of the Central UI
+(person icon → account info).
 
 ---
 
 ## 7. Web UI Guide
 
-Open `http://localhost:8000` (or your configured host/port). The interface
-has three tabs.
-
 ### Export tab
 
-**Purpose:** Connect to a source Classic Central instance, select groups,
-and write their configuration to disk.
+**Purpose:** Connect to Classic Central, select groups, write configuration
+to disk.
 
-**Step-by-step:**
+1. Enter **Base URL** and **Access Token** for the Classic Central source
+2. Click **Connect & Load Groups**
+3. Select groups using checkboxes (**All** / **None** shortcuts available)
+4. Click **↓ Export Selected**
 
-1. Enter the **Base URL** of the source cluster
-2. Enter an **Access Token** for the source cluster
-3. Click **Connect & Load Groups** — the sidebar populates with all groups
-   found, each labelled with its device type (`IAP`, `SW`, `CX`, `MIXED`)
-4. Use the checkboxes to select which groups to export. **All** and **None**
-   buttons select or clear all groups
-5. Click **↓ Export Selected**
-
-The main panel shows real-time progress as each group is exported:
-
-- A progress bar tracking groups completed
-- Summary counters: Exported / Warnings / Failed
-- A result card per group showing which files were written
-- A timestamped log terminal at the bottom
-
-**Result card status meanings:**
+Progress streams in real time. Result cards show which files were written
+per group. Status meanings:
 
 | Status | Meaning |
 |--------|---------|
-| `OK` | All files written successfully |
-| `WARN` | Group created but one file (e.g. country code) returned a non-200 response |
-| `FAIL` | Group properties could not be fetched |
+| `OK` | All files written |
+| `WARN` | One file returned non-200 (e.g. no country code set) — rest OK |
+| `FAIL` | Group properties fetch failed |
+
+---
 
 ### Import tab
 
-**Purpose:** Load an export from disk and re-create the groups on a target
-Classic Central instance.
+**Purpose:** Assign APs from the exported Classic Central groups to sites
+and device groups in New Central.
 
-**Step-by-step:**
+#### Loading the export
 
-1. Click **⬡ Load Export from Disk** — the sidebar populates from
-   `manifest.json` on disk. The manifest metadata (source cluster, export
-   timestamp, group count) is shown in the main panel
-2. Use checkboxes to select which groups to import
-3. Enter the **Base URL** and **Access Token** for the **target** cluster
-4. Click **↑ Import Selected**
+Click **⬡ Load Export from Disk**. The sidebar populates from
+`manifest.json`. Groups default to **no selection** — select the groups
+you want to import.
 
-Groups already present on the target instance are automatically detected
-and skipped — they appear in the results as `SKIPPED` with a grey indicator.
-The import is safe to re-run.
+#### Connecting to New Central
 
-Per-group result cards show each import step:
+Enter the New Central **Base URL** and **Access Token**, then click
+**Connect to New Central**. The tool fetches all existing sites and
+auto-matches them to exported groups by exact name (case-sensitive).
 
-- **Create group** — POST to `/configuration/v3/groups`
-- **CLI config** — PUT to `/configuration/v1/ap_config/{group}` (IAP groups only)
-- **Country code** — PUT to `/configuration/v1/country` (IAP groups only)
+Auto-matched groups show a green **✓ auto** badge. Unmatched groups can be
+assigned manually from the site dropdown.
 
-Each step has a green or red dot. A group is marked `FAIL` only if one or
-more steps return a non-2xx response.
+#### Site mapping
+
+The mapping panel shows only the **selected** groups (those checked in the
+left sidebar). Groups with no site mapping are skipped during import.
+
+#### AP selection and membership pre-check
+
+Click the **▶** expand arrow next to any group to view its AP list. The
+tool automatically fetches current AP memberships from New Central
+(`GET /monitoring/v2/aps`) and overlays status badges:
+
+| Badge | Colour | Meaning |
+|-------|--------|---------|
+| **IN SITE** | Amber | AP is already assigned to the target site — auto-deselected |
+| **IN GROUP** | Blue | AP is already in its expected `Aruba_<model>` device group |
+
+Deselected APs are not re-submitted to the site assignment API. The device
+group step independently checks group membership and skips APs already in
+the correct group.
+
+#### Verbose logging
+
+Check **Verbose logging** before clicking Import to log every API call,
+HTTP status code, and response body. Useful for diagnosing failures.
+
+#### Import execution
+
+Click **↑ Import to New Central**. Two phases run sequentially:
+
+**Phase 1 — Site assignment**
+
+For each selected group:
+1. Collects the selected AP serials
+2. Sends them in batches of 50 to `POST /central/v2/sites/associations`
+
+**Phase 2 — Device group assignment**
+
+After all site assignments complete:
+1. Fetches the list of existing New Central device groups
+   (`GET /configuration/v2/groups`)
+2. Fetches each AP's current group via `GET /monitoring/v2/aps`
+3. For each AP model present in the import:
+   - Creates `Aruba_<model>` group if it does not already exist
+   - Moves APs not already in that group via
+     `POST /configuration/v1/devices/move`
+   - APs already in the correct group are logged as skipped
+
+#### Result cards
+
+A result card is produced for each site assignment and each device group.
+Click the summary line on a card to expand the AP list:
+
+- **✓ serial — hostname** (green) — AP moved successfully
+- **– serial — hostname** (grey) — AP already assigned, skipped
+- **✗ serial — hostname** (red) — move failed
+
+---
 
 ### Data tab
 
-**Purpose:** Browse and inspect exported configuration currently on disk,
-without making any API calls to Central.
+**Purpose:** Inspect exported configuration on disk without API calls.
 
-**Using the Data tab:**
+- Sidebar lists all exported groups with AP counts and file indicators
+- Click a group to view: group properties, AP inventory table, and
+  AOS10 CLI configuration (syntax-highlighted)
+- **Filter groups…** box filters by name (case-insensitive substring)
+- **⎘ Copy** button copies the raw CLI config to clipboard
 
-1. Click the **Data** tab — the browser automatically loads from disk
-2. The main panel shows:
-   - Manifest metadata (source cluster, export timestamp)
-   - Summary cards: total groups, IAP groups, switch groups, groups with CLI config
-3. Click any group in the sidebar to load its detail view
+#### Sample export
 
-**Group detail view shows:**
+Used for testing the import workflow without a live Classic Central source.
 
-- **File pills** (top right of card) — green when the file is present on
-  disk, grey when absent
-- **Properties grid** — `allowed_types`, `aos10`, `monitor_only_sw`,
-  `monitor_only_cx`, `country_code`
-- **CLI config block** (IAP groups only) — the full AOS10 configuration
-  rendered with syntax highlighting:
-  - Blue — CLI keywords (`wlan`, `ssid`, `security`, `interface`, etc.)
-  - Amber — indented configuration keys
-  - Purple — numeric values and port numbers
-  - Cyan — quoted string values
-  - Green — IP addresses
-  - Grey italic — comment lines beginning with `!` or `#`
-- **⎘ Copy** button — copies the raw CLI config to the clipboard
+1. Open the **Sample Export** panel at the bottom of the Data tab
+2. Toggle it **on**
+3. Set the group name and enter serial numbers of real APs that exist in
+   your New Central tenant (1–5 APs)
+4. Click **Save**
 
-Use the **Filter groups…** search box in the sidebar to filter by group
-name. The filter is case-insensitive and matches substrings.
+The sample group appears in the Import tab with a yellow **TEST** badge.
+The data tab shows the group with a TEST indicator. Disable it before
+running a production import.
 
 ---
 
 ## 8. CLI Scripts Guide
 
-The CLI scripts (`export_groups.py`, `import_groups.py`) use the same
-`exporters.py` module as the web UI and write to the same `exports/`
-directory. They can be used interchangeably with the web UI — run an export
-via CLI and import via web UI, or vice versa.
-
 ### export_groups.py
 
-Exports all groups from a Classic Central instance.
-
 ```bash
-# Using environment variables (recommended)
 CENTRAL_BASE_URL=https://apigw-prod2.central.arubanetworks.com \
 CENTRAL_TOKEN=<token> \
 python export_groups.py
 ```
 
-Example output:
-
-```
-Found 12 groups
-
-Branch-APs/  (types: ['IAP'])
-    properties.json
-    ap_cli_config.json
-    country.json  (US)
-Core-Switches/  (types: ['ArubaSwitch', 'CX'])
-    properties.json
-HQ-APs/  (types: ['IAP'])
-    properties.json
-    ap_cli_config.json
-    country.json  (US)
-...
-
-Saved manifest (12 groups)
-Export complete
-```
+Exports all groups, writing files to `exports/<group-name>/` and creating
+`exports/manifest.json`.
 
 ### import_groups.py
 
-Imports groups from the `exports/` directory to a target Classic Central
-instance. Groups already present on the target are automatically skipped.
-
 ```bash
 CENTRAL_BASE_URL=https://apigw-prod2.central.arubanetworks.com \
-CENTRAL_TOKEN=<new-tenant-token> \
+CENTRAL_TOKEN=<target-token> \
 python import_groups.py
 ```
 
-Example output:
+Imports groups from `exports/` to a Classic Central target. Groups already
+present on the target are automatically skipped.
 
-```
-Manifest loaded: 12 groups
-Source cluster:  https://apigw-prod2.central.arubanetworks.com
-Exported at:     2026-04-06T14:30:00Z
-
-Skipping 2 group(s) already present on target
-
-Branch-APs/  (types: ['IAP'])
-  [Branch-APs] Group created
-  [Branch-APs] CLI config pushed
-  [Branch-APs] Country set: US
-Core-Switches/  (types: ['ArubaSwitch', 'CX'])
-  [Core-Switches] Group created
-...
-
-Import complete:
-  Created: 10
-  Failed:  0
-  Missing: 0
-```
-
-### Running CLI scripts inside the container
+### Running inside the container
 
 ```bash
 docker exec -it central-migration \
@@ -556,9 +453,7 @@ docker exec -it central-migration \
   python export_groups.py
 ```
 
-The `exports/` directory inside the container is the same bind-mounted
-path, so files written by the CLI script are immediately visible in the
-web UI's Data tab.
+Files written by the CLI appear immediately in the web UI Data tab.
 
 ---
 
@@ -572,33 +467,42 @@ exports/
 ├── Branch-APs/
 │   ├── properties.json
 │   ├── ap_cli_config.json
-│   └── country.json
-├── Core-Switches/
-│   └── properties.json
-└── HQ-APs/
-    ├── properties.json
-    ├── ap_cli_config.json
-    └── country.json
+│   ├── country.json
+│   ├── ap_inventory.json
+│   └── ap_settings/
+│       ├── CNABCD1234.json
+│       └── CNEFGH5678.json
+└── Core-Switches/
+    └── properties.json
 ```
 
 ### manifest.json
 
-Written last, after all groups are exported. Preserves the group order
-returned by the Central API, which the import respects.
-
 ```json
 {
-  "_exported_at": "2026-04-06T14:30:00Z",
+  "_exported_at": "2026-04-28T14:30:00Z",
   "_source_cluster": "https://apigw-prod2.central.arubanetworks.com",
-  "groups": ["Branch-APs", "Core-Switches", "HQ-APs"]
+  "groups": ["Branch-APs", "Core-Switches"]
 }
 ```
 
-### properties.json
+### ap_inventory.json
 
-Returned directly from `GET /configuration/v1/groups/properties`. The
-payload is stored as-is and re-submitted to `POST /configuration/v3/groups`
-on import.
+Written by the AP inventory exporter. Imported by the New Central import
+to map serials to models for device group assignment.
+
+```json
+[
+  {
+    "serial": "CNABCD1234",
+    "model": "AP-515",
+    "name": "Branch-AP-01",
+    "ip_address": "10.1.1.10"
+  }
+]
+```
+
+### properties.json
 
 ```json
 {
@@ -609,256 +513,194 @@ on import.
 }
 ```
 
-`allowed_types` controls which device tabs are visible in the Central UI
-for that group. Valid values: `IAP`, `ArubaSwitch`, `CX`, `MobilityController`.
-
 ### ap_cli_config.json
 
-The CLI config blob returned from `GET /configuration/v1/ap_config/{group}`.
-Wrapped in a single key so the file is valid JSON regardless of the CLI
-content format.
-
 ```json
 {
-  "cli_config": "version 8.11.2.0\n!\nhostname Branch-APs\n!\nwlan ssid-profile Corp-WiFi\n  ..."
-}
-```
-
-On import, `cli_config` is extracted and PUT as-is to
-`/configuration/v1/ap_config/{group}`. This is a full replace — the entire
-group configuration is overwritten.
-
-### country.json
-
-```json
-{
-  "country": "US"
-}
-```
-
-Country codes follow ISO 3166-1 alpha-2 format. On import, applied via
-`PUT /configuration/v1/country` with `{"groups": ["<name>"], "country": "US"}`.
-
----
-
-## 10. pycentral SDK Reference
-
-All Central API calls in this project use `ArubaCentralBase` and the
-`Groups` class from `pycentral.configuration`.
-
-### ArubaCentralBase
-
-```python
-from pycentral.base import ArubaCentralBase
-
-conn = ArubaCentralBase(
-    central_info=central_info,  # dict with base_url + token or OAuth creds
-    token_store=None,           # None = no local token caching
-    ssl_verify=True,            # set False only for lab environments with self-signed certs
-    user_retries=10             # retry attempts on transient failures
-)
-```
-
-### conn.command()
-
-The primary method for all API calls. Returns a dict with two keys:
-
-```python
-resp = conn.command(
-    apiMethod="GET",                        # HTTP method: GET, POST, PUT, DELETE, PATCH
-    apiPath="/configuration/v2/groups",     # API path (with or without leading slash)
-    apiParams={"limit": 20, "offset": 0},  # URL query parameters
-    apiData={"group": "MyGroup", ...}       # Request body (serialised to JSON automatically)
-)
-
-# Response structure:
-# resp["code"]  — HTTP status code (int)
-# resp["msg"]   — Parsed JSON response body (dict or list) or raw string
-```
-
-### Groups class
-
-```python
-from pycentral.configuration import Groups
-
-g = Groups()
-resp = g.get_groups(conn, offset=0, limit=20)
-# Wraps GET /configuration/v2/groups
-# resp["msg"]["data"] — list of group name strings
-```
-
-The API returns a maximum of 20 groups per call. Use offset pagination to
-retrieve all groups:
-
-```python
-all_groups, offset, limit = [], 0, 20
-while True:
-    resp = g.get_groups(conn, offset=offset, limit=limit)
-    page = resp["msg"].get("data", [])
-    all_groups.extend(page)
-    if len(page) < limit:
-        break
-    offset += limit
-```
-
-### URL constants used
-
-These are the Central API endpoints called by this tool:
-
-| Operation | Method | Endpoint |
-|-----------|--------|----------|
-| List groups | GET | `/configuration/v2/groups` |
-| Group properties | GET | `/configuration/v1/groups/properties` |
-| AP CLI config | GET | `/configuration/v1/ap_config/{group}` |
-| Country code | GET | `/configuration/v1/{group}/country` |
-| Create group | POST | `/configuration/v3/groups` |
-| Push CLI config | PUT | `/configuration/v1/ap_config/{group}` |
-| Set country code | PUT | `/configuration/v1/country` |
-
----
-
-## 11. API Reference
-
-The Flask backend exposes the following HTTP API, consumed by the web UI.
-
-### POST /api/connect
-
-Test credentials and return all groups with their properties.
-
-**Request:**
-```json
-{
-  "base_url": "https://apigw-prod2.central.arubanetworks.com",
-  "token": "<access-token>"
-}
-```
-
-**Response:**
-```json
-{
-  "ok": true,
-  "groups": ["Branch-APs", "Core-Switches"],
-  "properties": {
-    "Branch-APs": {"allowed_types": ["IAP"], "aos10": true, ...},
-    "Core-Switches": {"allowed_types": ["ArubaSwitch", "CX"], ...}
-  }
-}
-```
-
-### POST /api/export
-
-Start an export operation. Returns an `op_id` immediately; progress is
-streamed via SSE.
-
-**Request:**
-```json
-{
-  "base_url": "https://apigw-prod2.central.arubanetworks.com",
-  "token": "<access-token>",
-  "groups": ["Branch-APs", "HQ-APs"]   // empty array = export all
-}
-```
-
-**Response:** `{"ok": true, "op_id": "export_1712412600000"}`
-
-### GET /api/export/progress/{op_id}
-
-Server-Sent Events stream. Connect with `EventSource` to receive progress.
-
-**Events:**
-
-| Event | Payload |
-|-------|---------|
-| `start` | `{"total": 12}` |
-| `group_done` | `{"group": "Branch-APs", "allowed_types": ["IAP"], "files": [...]}` |
-| `complete` | `{"total": 12}` |
-| `error` | `{"message": "..."}` |
-
-### GET /api/manifest
-
-Read the manifest from disk.
-
-**Response:**
-```json
-{
-  "ok": true,
-  "manifest": {"_exported_at": "...", "_source_cluster": "...", "groups": [...]},
-  "groups": [
-    {"name": "Branch-APs", "allowed_types": ["IAP"], "files": ["properties.json", ...]}
-  ]
-}
-```
-
-### POST /api/import
-
-Start an import operation. Returns `op_id`; progress via SSE.
-
-**Request:**
-```json
-{
-  "base_url": "https://apigw-prod2.central.arubanetworks.com",
-  "token": "<target-access-token>",
-  "groups": ["Branch-APs"]   // empty array = import all from manifest
-}
-```
-
-**Response:** `{"ok": true, "op_id": "import_1712412900000"}`
-
-### GET /api/import/progress/{op_id}
-
-**Events:**
-
-| Event | Payload |
-|-------|---------|
-| `start` | `{"total": 10, "skipped": ["existing-group"]}` |
-| `group_done` | `{"group": "Branch-APs", "status": "ok", "steps": [{"name": "Create group", "ok": true}, ...]}` |
-| `complete` | `{"total": 10, "skipped": 2}` |
-| `error` | `{"message": "..."}` |
-
-### GET /api/groups
-
-Return summary of all groups on disk.
-
-**Response:**
-```json
-{
-  "ok": true,
-  "manifest": {"_exported_at": "...", ...},
-  "groups": [
-    {
-      "name": "Branch-APs",
-      "allowed_types": ["IAP"],
-      "aos10": true,
-      "monitor_only_sw": false,
-      "monitor_only_cx": false,
-      "country": "US",
-      "has_cli_config": true,
-      "files": ["properties.json", "ap_cli_config.json", "country.json"]
-    }
-  ]
-}
-```
-
-### GET /api/groups/{group_name}
-
-Return full detail for a single group including CLI config.
-
-**Response:**
-```json
-{
-  "ok": true,
-  "name": "Branch-APs",
-  "properties": {"allowed_types": ["IAP"], "aos10": true, ...},
-  "country": "US",
   "cli_config": "version 8.11.2.0\n!\nhostname Branch-APs\n..."
 }
 ```
 
+---
+
+## 10. New Central API Surface
+
+All New Central calls go through `ArubaCentralBase.command()` using the
+same token-based auth as Classic Central calls.
+
+| Operation | Method | Endpoint |
+|-----------|--------|----------|
+| List sites | GET | `/central/v2/sites` |
+| Assign APs to site | POST | `/central/v2/sites/associations` |
+| List device groups | GET | `/configuration/v2/groups` |
+| Create device group | POST | `/configuration/v2/groups` |
+| Move APs to device group | POST | `/configuration/v1/devices/move` |
+| List APs with membership | GET | `/monitoring/v2/aps` |
+
+### Site assignment payload
+
+```json
+{
+  "site_id": 43,
+  "device_ids": ["CNABCD1234", "CNEFGH5678"],
+  "device_type": "IAP"
+}
+```
+
+### Device group creation payload
+
+```json
+{
+  "group": "Aruba_AP-515",
+  "group_attributes": {
+    "template_info": {"Wired": false, "Wireless": true},
+    "group_properties": {
+      "AllowedDevTypes": ["AccessPoints"],
+      "AOSVersion": "AOS10",
+      "NewCentral": true
+    }
+  }
+}
+```
+
+### Device move payload
+
+```json
+{
+  "group": "Aruba_AP-515",
+  "serials": ["CNABCD1234"]
+}
+```
+
+### GET /configuration/v2/groups response format
+
+The API returns group names wrapped in single-element lists:
+
+```json
+{
+  "data": [["aos-cx"], ["Aruba_AP-515"], ["default"]],
+  "total": 3
+}
+```
+
+### GET /monitoring/v2/aps membership fields
+
+```json
+{
+  "aps": [
+    {
+      "serial": "CNABCD1234",
+      "site": "Branch-Orem",
+      "group_name": "Aruba_AP-515"
+    }
+  ],
+  "total": 1
+}
+```
+
+---
+
+## 11. Flask HTTP API Reference
+
+### POST /api/connect
+
+Test credentials and return all groups.
+
+**Request:**
+```json
+{"base_url": "https://...", "token": "<access-token>"}
+```
+
+**Response:**
+```json
+{
+  "ok": true,
+  "groups": ["Branch-APs"],
+  "properties": {"Branch-APs": {"allowed_types": ["IAP"], "aos10": true}}
+}
+```
+
+### POST /api/export — GET /api/export/progress/{id}
+
+Start export. SSE events:
+
+| Event | Payload |
+|-------|---------|
+| `start` | `{"total": 12}` |
+| `group_done` | `{"group": "...", "allowed_types": [...], "files": [...]}` |
+| `complete` | `{"total": 12}` |
+| `error` | `{"message": "..."}` |
+
+### GET /api/groups
+
+Return summary of all groups on disk including AP counts.
+
+### GET /api/groups/{name}
+
+Return full group detail including AP list with serial, model, hostname, IP.
+
+### POST /api/import/new-central — GET /api/import/new-central/progress/{id}
+
+Start New Central import. Request body:
+
+```json
+{
+  "base_url": "https://...",
+  "token": "<access-token>",
+  "verbose": true,
+  "mappings": {
+    "Branch-APs": {
+      "site_id": 43,
+      "serials": ["CNABCD1234"]
+    }
+  }
+}
+```
+
+SSE events:
+
+| Event | Payload |
+|-------|---------|
+| `start` | `{"total": 2}` |
+| `log` | `{"level": "info|warn|error|debug", "message": "..."}` |
+| `group_done` | `{"group": "...", "site_id": 43, "status": "ok|fail|missing", "ap_count": 1, "serials": [...], "failed_serials": [...], "steps": [...]}` |
+| `complete` | `{"total": 2, "dg_results": [{"model": "AP-515", "group_name": "Aruba_AP-515", "total": 1, "ok": true, "serials": [...], "skipped_serials": [...], "failed_serials": [...]}]}` |
+| `error` | `{"message": "..."}` |
+
+### POST /api/import/new-central/sites
+
+Fetch all sites from a New Central instance.
+
+**Request:** `{"base_url": "...", "token": "..."}`
+
+**Response:** `{"ok": true, "sites": [{"site_id": 43, "site_name": "Branch-Orem"}]}`
+
+### POST /api/import/new-central/memberships
+
+Return current site and device-group membership for a list of AP serials.
+
+**Request:** `{"base_url": "...", "token": "...", "serials": ["CNABCD1234"]}`
+
+**Response:**
+```json
+{
+  "ok": true,
+  "memberships": {
+    "CNABCD1234": {
+      "site_name": "Branch-Orem",
+      "device_group": "Aruba_AP-515"
+    }
+  }
+}
+```
+
+### GET /api/sample — POST /api/sample
+
+Read or write the sample export configuration used for testing.
+
 ### GET /health
 
-Health check. Returns HTTP 200 when the service is ready.
-
-**Response:** `{"ok": true}`
+Returns `{"ok": true}` with HTTP 200 when the service is ready.
 
 ---
 
@@ -870,37 +712,30 @@ Health check. Returns HTTP 200 when the service is ready.
 docker compose logs central-migration
 ```
 
-Common causes:
-
 **Port already in use:**
 ```
 [ERROR] Connection in use: ('0.0.0.0', 8000)
 ```
-Change the host port in `docker-compose.yml`:
-```yaml
-ports:
-  - "8001:8000"
-```
+Change the host port in `docker-compose.yml`.
 
-**Permissions on exports/ directory:**
+**Permissions on exports/:**
 ```
 PermissionError: [Errno 13] Permission denied: '/app/exports/manifest.json'
 ```
-The container runs as uid 1001. If the host `exports/` directory was created
-by root, fix ownership:
+The container runs as uid 1001. Fix host directory ownership:
 ```bash
 sudo chown -R 1001:1001 ./exports
 ```
 
 ---
 
-### Connect fails: "Connection refused" or timeout
+### Connect fails: timeout or connection refused
 
-The Flask backend makes the API call server-side. The Docker host must have
-network connectivity to the Central API Gateway, not the browser machine.
+The Flask backend makes API calls server-side. The Docker host needs
+network access to the Central API Gateway — not just the browser machine.
+Test from inside the container:
 
 ```bash
-# Test from inside the container
 docker exec central-migration python -c "
 import urllib.request
 r = urllib.request.urlopen('https://apigw-prod2.central.arubanetworks.com')
@@ -908,107 +743,60 @@ print(r.status)
 "
 ```
 
-If this fails, check firewall rules on the Docker host — port 443 outbound
-to Central's API Gateway must be open.
-
 ---
 
 ### Connect fails: HTTP 401
 
-Token has expired (tokens are valid for 2 hours) or the wrong token was
-entered. Generate a fresh token from the Central API Gateway page and retry.
+Token expired (tokens are valid for 2 hours) or incorrect token. Generate
+a fresh token from the Central API Gateway page.
 
 ---
 
 ### Connect fails: HTTP 403
 
-The token is valid but the associated user account does not have API access
-or lacks the required role. In Central, the user must have at minimum
-**Read-Only** access. For imports, **Admin** access is required.
+Valid token but user account lacks API access or required role. The user
+must have **Admin** access for imports; **Read-Only** is sufficient for
+export and data browsing.
 
 ---
 
-### Export: group exported with WARN status
+### Import: APs not appearing in device group
 
-A `WARN` on a file means that file's API call returned a non-200 status but
-did not block the rest of the export. Common causes:
+Enable **Verbose logging** and re-run the import. The log will show:
 
-- **country.json WARN** — the group has no country code set. This is
-  expected for groups where APs bring their own country code. The file is
-  not written, and import skips the country code step for that group.
-- **ap_cli_config.json WARN** — the group exists but has no AP configuration
-  yet (empty group with no devices). The file is not written.
+1. The list of existing device groups fetched from New Central
+2. Each AP's current device group from the monitoring API
+3. The create-group API response (if creation was attempted)
+4. The move API response for each batch
 
----
-
-### Import: group fails at "Create group" step
-
-Check the import log for the HTTP response code:
-
-- **409 Conflict** — the group name already exists on the target. This
-  should not happen if the idempotency check is working. Manually delete
-  the group in Central and retry.
-- **400 Bad Request** — the `properties.json` payload contains a field the
-  target instance does not support (e.g. a newer API feature). Inspect the
-  file and remove unrecognised fields.
-- **422 Unprocessable Entity** — the group name contains characters not
-  permitted by Central (max 32 single-byte ASCII characters, no spaces or
-  special characters).
+Common causes:
+- AP serial not found in `ap_inventory.json` — re-export from Classic
+  Central with the latest exporter version
+- AP not onboarded in New Central — the AP must be visible in the New
+  Central device inventory before it can be moved between groups
 
 ---
 
-### Import: "CLI config pushed" but configuration is wrong in Central
+### SSE progress stream stops mid-operation
 
-`PUT /configuration/v1/ap_config` is a full replace. If the target group
-already had configuration before the import, it was overwritten. This is
-expected behaviour — ensure the target group is empty before running an
-import that includes AP CLI config.
+A proxy or load balancer is buffering the SSE stream. Check:
 
----
+1. nginx: confirm `proxy_buffering off` and `proxy_read_timeout 180s`
+2. Cloud load balancers: idle timeout must exceed the gunicorn `--timeout`
 
-### SSE progress stream stops mid-export
-
-This happens when a proxy or load balancer buffers or drops the SSE
-connection. Check:
-
-1. If using nginx, confirm `proxy_buffering off` and `proxy_read_timeout 180s`
-2. If using a cloud load balancer, check its idle timeout setting — it must
-   be greater than the gunicorn `--timeout` value (120s)
-
-You can also increase the gunicorn timeout by setting `GUNICORN_CMD_ARGS`
-in `docker-compose.yml`:
-
+Increase the gunicorn timeout via environment variable:
 ```yaml
+# docker-compose.yml
 environment:
-  - GUNICORN_CMD_ARGS=--bind=0.0.0.0:8000 --workers=1 --threads=8 --timeout=300 --keep-alive=5 --access-logfile=- --error-logfile=-
+  - GUNICORN_CMD_ARGS=--bind=0.0.0.0:8000 --workers=1 --threads=8 --timeout=300
 ```
 
 ---
 
 ### Data tab shows "No export on disk"
 
-No `manifest.json` exists in `exports/`. Run an export first. If you ran
-a CLI export, confirm it ran in the same directory that Docker maps to
-`/app/exports` inside the container.
-
-```bash
-ls -la ./exports/
-# Should show manifest.json and one directory per group
-```
-
----
-
-### pycentral raises "urllib3 RequestsDependencyWarning"
-
-```
-urllib3 (2.x.x) or chardet/charset_normalizer doesn't match a supported version
-```
-
-This is an advisory warning, not an error. pycentral 1.4.1 pins
-`urllib3==2.2.2` and `requests==2.31.0`. If your system has a newer urllib3
-installed alongside, the warning appears. It does not affect API call
-behaviour. In the Docker image this warning does not appear because the
-clean build installs exactly the pinned versions.
+No `manifest.json` in `exports/`. Run an export first, or copy an existing
+export directory into `./exports/` on the host.
 
 ---
 
@@ -1017,69 +805,50 @@ clean build installs exactly the pinned versions.
 ### Adding a new data type to export
 
 All export/import logic is registered in `EXPORTERS` in `exporters.py`.
-Adding a new data type requires three things:
-
-1. An `export_fn` that writes a file to `group_dir`
-2. An `import_fn` that reads that file and calls the appropriate Central API
-3. A registry entry declaring which device types trigger the exporter
-
-**Example — exporting switch ACLs for CX groups:**
 
 ```python
-# In exporters.py
+# exporters.py
 
-def export_switch_acls(central, group_name: str, group_dir: str, **_):
+def export_wlan_profiles(central, group_name, group_dir, **_):
     resp = central.command(
         apiMethod="GET",
-        apiPath=f"/configuration/v1/cx_devices/acl/{group_name}"
+        apiPath=f"/configuration/v1/wlan/{group_name}"
     )
     if resp["code"] != 200:
-        print(f"    switch_acls.json  [WARN: {resp['code']} — skipped]")
         return
-    _save(group_dir, "switch_acls.json", resp["msg"])
-    print(f"    switch_acls.json")
+    _save(group_dir, "wlan_profiles.json", resp["msg"])
 
-
-def import_switch_acls(central, group_name: str, group_dir: str) -> bool:
-    data = _load(group_dir, "switch_acls.json")
+def import_wlan_profiles(central, group_name, group_dir):
+    data = _load(group_dir, "wlan_profiles.json")
     if data is None:
         return True
     resp = central.command(
         apiMethod="PUT",
-        apiPath=f"/configuration/v1/cx_devices/acl/{group_name}",
+        apiPath=f"/configuration/v1/wlan/{group_name}",
         apiData=data
     )
     return resp["code"] in (200, 201)
 
-
-# Add to EXPORTERS:
 EXPORTERS = [
     ...
     {
-        "name": "switch_acls",
-        "applies_to": {"CX"},       # only runs for groups with CX switches
-        "export_fn": export_switch_acls,
-        "import_fn": import_switch_acls,
+        "name":       "wlan_profiles",
+        "applies_to": {"IAP"},
+        "export_fn":  export_wlan_profiles,
+        "import_fn":  import_wlan_profiles,
     },
 ]
 ```
 
 No changes to `app.py`, `export_groups.py`, or `import_groups.py` are
-needed. The new exporter is automatically picked up by `get_active_exporters()`
-and will:
+needed. The new entry is automatically picked up by `get_active_exporters()`
+and will run for all groups whose `allowed_types` intersects `applies_to`.
 
-- Run during web UI export for groups with `CX` in `allowed_types`
-- Write `switch_acls.json` to the group directory
-- Appear as a file pill in the Data tab (if the file is present on disk)
-- Run during web UI and CLI import for applicable groups
-
-### Rebuilding the Docker image after code changes
+### Rebuilding after code changes
 
 ```bash
 docker compose up -d --build
 ```
 
-The builder stage caches the pip install layer. If `requirements.txt` has
-not changed, pip does not re-download packages — only changed Python files
-are re-copied. A typical rebuild after a code-only change takes under 10
-seconds.
+The pip install layer is cached — only changed Python files are re-copied.
+A typical code-only rebuild takes under 10 seconds.
