@@ -274,6 +274,19 @@
   .results-grid { display: grid; gap: 8px; }
   .result-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 16px; display: flex; flex-direction: column; gap: 6px; animation: fadeIn 200ms ease; }
   .result-card-top { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+  .dg-config-toggle { display:flex; align-items:center; gap:8px; cursor:pointer; font-family:var(--mono); font-size:12px; color:var(--text); user-select:none; }
+  .dg-config-toggle input[type="checkbox"] { accent-color:var(--amber); width:14px; height:14px; flex-shrink:0; cursor:pointer; }
+  .dg-preview { margin-top:10px; border:1px solid var(--border); border-radius:var(--radius); overflow:hidden; }
+  .dg-preview summary { font-family:var(--mono); font-size:11px; color:var(--text); background:var(--surface2); padding:8px 12px; cursor:pointer; user-select:none; list-style:none; display:flex; align-items:center; gap:6px; border-bottom:1px solid var(--border); }
+  .dg-preview summary::-webkit-details-marker { display:none; }
+  .dg-preview summary::before { content:'▶'; font-size:8px; color:var(--muted); transition:transform 0.15s; display:inline-block; flex-shrink:0; }
+  .dg-preview[open] summary::before { transform:rotate(90deg); }
+  .dg-preview summary:hover { background:var(--surface); }
+  .dg-preview-table { width:100%; border-collapse:collapse; }
+  .dg-preview-table th { text-align:left; padding:5px 12px; font-family:var(--mono); font-size:9px; text-transform:uppercase; letter-spacing:0.08em; color:var(--muted); border-bottom:1px solid var(--border); background:var(--surface); }
+  .dg-preview-table td { padding:6px 12px; border-bottom:1px solid var(--border); font-family:var(--mono); font-size:11px; }
+  .dg-preview-table tr:last-child td { border-bottom:none; }
+  .dg-preview-table tr:hover td { background:var(--surface2); }
   .ap-detail { margin-top: 2px; }
   .ap-detail summary { font-family: var(--mono); font-size: 10px; color: var(--muted); cursor: pointer; user-select: none; list-style: none; display: flex; align-items: center; gap: 5px; }
   .ap-detail summary::-webkit-details-marker { display: none; }
@@ -687,6 +700,14 @@
         <div class="hidden" id="imp-mapping-section">
           <div class="section-heading" style="margin-top:20px">Site Mapping</div>
           <div id="imp-mapping-content"></div>
+        </div>
+        <div class="hidden" id="imp-dg-section">
+          <div class="section-heading" style="margin-top:20px">Device Group Assignment</div>
+          <label class="dg-config-toggle">
+            <input type="checkbox" id="imp-dg-enabled" checked onchange="renderDeviceGroupConfig()">
+            Assign APs to New Central device groups (naming: <span style="color:var(--amber);font-style:italic">Aruba_&lt;model&gt;</span>)
+          </label>
+          <div id="imp-dg-content"></div>
         </div>
         <div class="hidden" id="imp-browse-section">
           <div class="section-heading" style="margin-top:20px">Group Detail</div>
@@ -1250,6 +1271,72 @@ function renderSiteMapping() {
     </div>
     <div class="mapping-list">${rows}</div>`;
   renderImportReport();
+  renderDeviceGroupConfig();
+}
+
+function renderDeviceGroupConfig() {
+  const section  = document.getElementById('imp-dg-section');
+  const content  = document.getElementById('imp-dg-content');
+  const selected = impGroups.filter(g => impSelected.has(g.name));
+
+  if (!ncSites.length || !selected.length) { section.classList.add('hidden'); return; }
+  section.classList.remove('hidden');
+
+  const enabled = document.getElementById('imp-dg-enabled').checked;
+  if (!enabled) {
+    content.innerHTML = `<p style="font-family:var(--mono);font-size:10px;color:var(--muted);margin-top:8px">
+      Device group assignment is disabled — APs will only be assigned to their mapped sites.</p>`;
+    return;
+  }
+
+  // Build model → serials from selected groups + AP selections (exclude already-in-site APs)
+  const modelMap = {};
+  for (const g of selected) {
+    const aps    = apData[g.name] || [];
+    const sel    = apSelections[g.name];
+    const siteId = siteMappings[g.name];
+    const targetSite = siteId !== undefined ? (ncSites.find(s => s.site_id === siteId) || {}).site_name : null;
+    for (const ap of aps) {
+      if (!ap.model) continue;
+      if (sel && !sel.has(ap.serial)) continue;                                   // not selected for import
+      const mem = apMemberships[ap.serial];
+      if (mem && targetSite && mem.site_name === targetSite) continue;            // already in site
+      if (!modelMap[ap.model]) modelMap[ap.model] = [];
+      modelMap[ap.model].push(ap.serial);
+    }
+  }
+
+  const models = Object.keys(modelMap).sort();
+  const anyApDataLoaded = selected.some(g => apData[g.name] !== undefined);
+
+  if (!models.length) {
+    content.innerHTML = `<p style="font-family:var(--mono);font-size:10px;color:var(--muted);margin-top:8px">${
+      anyApDataLoaded
+        ? 'No APs with model data found in selected groups.'
+        : 'Expand groups in the Site Mapping table to load AP details and preview device group assignments.'
+    }</p>`;
+    return;
+  }
+
+  const totalAPs = models.reduce((s, m) => s + modelMap[m].length, 0);
+  const rows = models.map(m => {
+    const dgName = `Aruba_${m}`;
+    const count  = modelMap[m].length;
+    return `<tr>
+      <td style="color:var(--text-hi)">${_escHtml(m)}</td>
+      <td style="color:var(--amber)">${_escHtml(dgName)}</td>
+      <td style="text-align:right;color:var(--muted)">${count} AP${count !== 1 ? 's' : ''}</td>
+    </tr>`;
+  }).join('');
+
+  content.innerHTML = `
+    <details class="dg-preview" open>
+      <summary>${models.length} model${models.length !== 1 ? 's' : ''} · ${totalAPs} AP${totalAPs !== 1 ? 's' : ''} to assign</summary>
+      <table class="dg-preview-table">
+        <thead><tr><th>AP Model</th><th>New Central Device Group</th><th style="text-align:right">APs</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </details>`;
 }
 
 async function toggleGroupAPs(groupName) {
@@ -1468,9 +1555,18 @@ function renderImpGroups() {
     && impSelected.has(sampleConfig.name);
   document.getElementById('imp-sample-warning').classList.toggle('visible', !!hasSampleSelected);
   renderImportReport();
+  renderSiteMapping();
+  renderDeviceGroupConfig();
 }
 function toggleImp(n){impSelected.has(n)?impSelected.delete(n):impSelected.add(n);renderImpGroups();}
-function selectAllImp(v){impSelected=v?new Set(impGroups.map(g=>g.name)):new Set();renderImpGroups();}
+function selectAllImp(v) {
+  const visible = impLabelFilter.size === 0
+    ? impGroups
+    : impGroups.filter(g => (labelAssignments[g.name]||[]).some(l => impLabelFilter.has(l)));
+  if (v) { visible.forEach(g => impSelected.add(g.name)); }
+  else   { visible.forEach(g => impSelected.delete(g.name)); }
+  renderImpGroups();
+}
 
 function setImpSort(order) {
   impSortOrder = order;
@@ -1550,11 +1646,12 @@ async function runImportNewCentral() {
   resetImpStats(0, 0, 0);
   let total = Object.keys(mappings).length, done = 0, nOk = 0, nFail = 0;
 
-  const verbose = document.getElementById('imp-verbose-chk')?.checked || false;
+  const verbose              = document.getElementById('imp-verbose-chk')?.checked || false;
+  const include_device_groups = document.getElementById('imp-dg-enabled')?.checked ?? true;
 
   const {op_id} = await fetch('/api/import/new-central', {
     method: 'POST', headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({base_url: url, token, mappings, verbose}),
+    body: JSON.stringify({base_url: url, token, mappings, verbose, include_device_groups}),
   }).then(r => r.json());
 
   const es = new EventSource(`/api/import/new-central/progress/${op_id}`);

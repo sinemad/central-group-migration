@@ -684,8 +684,9 @@ def start_import_new_central():
     body = request.json or {}
     base_url = body.get("base_url", "").rstrip("/")
     token = body.get("token", "")
-    mappings = body.get("mappings", {})   # {group_name: site_id}
-    verbose  = bool(body.get("verbose", False))
+    mappings              = body.get("mappings", {})   # {group_name: site_id}
+    verbose               = bool(body.get("verbose", False))
+    include_device_groups = bool(body.get("include_device_groups", True))
     if not base_url or not token:
         return jsonify({"ok": False, "error": "base_url and token required"}), 400
     if not mappings:
@@ -808,6 +809,12 @@ def start_import_new_central():
                 })
 
             # --- Device group assignment (Aruba_<model>) ---
+            if not include_device_groups:
+                _emit(q, "log", {"level": "info",
+                                 "message": "── Device group assignment skipped (disabled)"})
+                _emit(q, "complete", {"total": len(groups), "dg_results": []})
+                return
+
             _emit(q, "log", {"level": "info", "message": "── Device group assignment"})
             dg_models: dict[str, list[str]] = {}
             dg_seen: set[str] = set()
