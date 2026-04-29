@@ -107,6 +107,13 @@ Click **⬡ Load Export from Disk**. The sidebar populates from `manifest.json`
 on disk. Exported groups default to **no selection** — check the groups you
 want to import.
 
+If labels are defined (see [Data tab → Labels](#labels)), a **Filter by
+label** bar appears above the group list. Click a label chip to show only
+groups with that label. The **All** and **None** buttons respect the active
+filter — they act only on visible groups. Use the **Label** sort option to
+group related groups together in the sidebar. This makes it straightforward
+to import one environment or location at a time.
+
 #### Step 2 — Connect to New Central
 
 Enter the **Base URL** and **Access Token** for the **New Central** target
@@ -139,20 +146,64 @@ Use the **All** / **None** buttons or individual checkboxes to control which
 APs are imported. Membership data is fetched automatically from New Central
 once you have connected.
 
-#### Step 5 — Run the import
+#### Step 5 — Configure device group assignment
+
+Below the site mapping panel, the **Device Group Assignment** section
+controls whether APs are also moved into New Central device groups after
+site assignment.
+
+**Enable/disable toggle** — checked by default. Uncheck to skip device
+group assignment entirely and only perform site assignments.
+
+**How device groups are named**
+
+Device group names are derived automatically from the AP model strings
+recorded in `ap_inventory.json` during export, using the convention:
+
+```
+Aruba_<model>
+```
+
+For example, an AP-515 is placed in a group named `Aruba_AP-515` and an
+AP-635 goes into `Aruba_AP-635`. The model string comes directly from the
+Classic Central monitoring API — it is the same value shown in the Central
+UI device list.
+
+**Preview table**
+
+When device group assignment is enabled, a collapsible table lists every AP
+model present in the selected groups alongside its target device group name
+and the number of APs that will be moved. The table updates automatically as
+groups and individual APs are selected or deselected. Expand or collapse it
+using the summary line.
+
+| AP Model | New Central Device Group | APs |
+|----------|--------------------------|-----|
+| AP-515 | Aruba_AP-515 | 8 |
+| AP-635 | Aruba_AP-635 | 3 |
+
+If AP detail has not yet been loaded for a group (expand the group row in
+the site mapping to load it), the table will prompt you to do so.
+
+#### Step 6 — Run the import
 
 Enable **Verbose logging** (checkbox) to see every API call and response in
 the log. Click **↑ Import to New Central**.
 
-The import performs two operations for each selected group:
+The import performs two phases:
 
-**Site assignment** — assigns the selected APs to the mapped New Central
-site via `POST /central/v2/sites/associations`.
+**Phase 1 — Site assignment** — assigns the selected APs to their mapped
+New Central site via `POST /central/v2/sites/associations`.
 
-**Device group assignment** — after all site assignments complete, APs are
-moved to model-based device groups (e.g. `Aruba_AP-515`). Groups are
-created automatically if they do not exist. APs already in the correct
-device group are skipped.
+**Phase 2 — Device group assignment** (if enabled) — after all site
+assignments complete, APs are moved into model-based device groups. The
+tool:
+
+1. Reads AP models from `ap_inventory.json` in each group's export directory
+2. Checks which device groups already exist in New Central
+3. Creates any missing `Aruba_<model>` groups (New Central, AOS10, AP-only)
+4. Checks each AP's current device group via the monitoring API
+5. Moves only APs not already in the correct group
 
 #### Import result cards
 
@@ -174,6 +225,25 @@ Browse exported configuration on disk without making any API calls.
   list, and AOS10 CLI configuration (syntax-highlighted)
 - **Filter groups…** search box filters by name (case-insensitive substring)
 
+#### Labels
+
+Labels are colored tags you can create and assign to exported groups. They
+let you organise groups visually and scope imports to a subset of groups
+without manually checking boxes one by one.
+
+**Creating labels** — Type a name in the **Labels** panel input at the top
+of the Data sidebar and click **+ Add**. Colors are assigned automatically.
+
+**Assigning labels** — Each group row shows label chips below its name.
+Click a chip to assign it; click again to remove it. The same chips appear
+in the group detail panel when a group is selected.
+
+**Deleting labels** — Click a chip in the Labels panel to delete it. It is
+removed from all groups immediately.
+
+Label assignments are saved to `exports/labels.json` and persist across
+restarts.
+
 #### Sample export (testing)
 
 The Data tab includes a **Sample Export** panel for testing the import
@@ -183,6 +253,36 @@ Central tenant. The sample group appears in the Import tab with a yellow
 **TEST** badge.
 
 > Disable the sample export before running a production import.
+
+---
+
+### Backup tab
+
+Snapshot and restore the `exports/` directory. Useful before a re-export
+that would overwrite existing data, or before testing a restore.
+
+**Create a backup** — Click **↓ Create Backup** in the sidebar. The tool
+compresses the entire `exports/` directory into a timestamped `.tar.gz`
+archive (`exports_YYYYMMDDTHHMMSSZ.tar.gz`) stored in `backups/`. Requires
+at least one completed export.
+
+**Restore a backup** — Click **↑ Restore** next to any archive. The current
+`exports/` directory is cleared and replaced with the archive contents. The
+Data and Import tabs reflect the restored data immediately.
+
+**Delete a backup** — Click **✕ Delete** to permanently remove an archive.
+A confirmation prompt is shown.
+
+The backup directory defaults to `backups/` alongside `exports/`. Set the
+`BACKUP_DIR` environment variable to change the location. In Docker, mount
+it as a volume to persist backups across rebuilds:
+
+```yaml
+# docker-compose.yml
+volumes:
+  - ./exports:/app/exports
+  - ./backups:/app/backups
+```
 
 ---
 

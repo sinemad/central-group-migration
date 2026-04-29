@@ -12,6 +12,10 @@
 5. [Local Development Setup](#5-local-development-setup)
 6. [Authentication](#6-authentication)
 7. [Web UI Guide](#7-web-ui-guide)
+   - [Export tab](#export-tab)
+   - [Import tab](#import-tab)
+   - [Data tab](#data-tab)
+   - [Backup tab](#backup-tab)
 8. [CLI Scripts Guide](#8-cli-scripts-guide)
 9. [Export File Format](#9-export-file-format)
 10. [New Central API Surface](#10-new-central-api-surface)
@@ -72,6 +76,7 @@ central-migration/
 │   └── index.html           # Single-file web UI (Export / Import / Data tabs)
 ├── exports/                 # Runtime data — bind-mounted as Docker volume
 │   ├── manifest.json
+│   ├── labels.json          # Label definitions and group assignments
 │   ├── .sample_config.json  # Sample export config (if enabled)
 │   └── <group-name>/
 │       ├── properties.json
@@ -79,6 +84,7 @@ central-migration/
 │       ├── ap_inventory.json
 │       └── ap_settings/
 │           └── <serial>.json
+├── backups/                 # .tar.gz archives created by the Backup tab
 ├── requirements.txt
 ├── Dockerfile
 └── docker-compose.yml
@@ -106,6 +112,14 @@ Flask / gunicorn  (1 worker, 8 threads)
   ├── POST /api/import/new-central/memberships    Check AP site/group membership
   ├── GET  /api/sample                    Read sample export config
   ├── POST /api/sample                    Save sample export config
+  ├── GET  /api/labels                    List all labels and assignments
+  ├── POST /api/labels                    Create a label
+  ├── DELETE /api/labels/<name>           Delete a label
+  ├── PUT  /api/groups/<name>/labels      Set labels for a group
+  ├── GET  /api/backups                   List backup archives
+  ├── POST /api/backup                    Create a new backup archive
+  ├── POST /api/restore                   Restore exports/ from a backup
+  ├── DELETE /api/backups/<filename>      Delete a backup archive
   └── GET  /health                        Health check
 ```
 
@@ -327,6 +341,27 @@ Click **⬡ Load Export from Disk**. The sidebar populates from
 `manifest.json`. Groups default to **no selection** — select the groups
 you want to import.
 
+#### Filtering and sorting by label
+
+If labels have been defined in the Data tab, a **Filter by label** bar
+appears at the top of the Import sidebar above the group list.
+
+- Click a label chip to activate it — only groups that have that label
+  assigned are shown in the group list. Multiple chips can be active at
+  once; a group must have at least one of the active labels to appear.
+- Click the chip again, or click **✕ clear**, to remove the filter.
+- The **All** and **None** buttons always respect the active label filter —
+  they select or deselect only the currently visible groups, not hidden ones.
+
+The sidebar sort order can also be set to **Label** (in addition to
+**Name** and **Type**), which sorts groups by their first assigned label
+alphabetically so groups with the same label appear together.
+
+A typical workflow for large migrations is to label groups by location or
+environment (e.g. *Production*, *Branch*, *Lab*) in the Data tab, then
+filter to a single label in the Import tab and run the import for that
+subset before moving on to the next.
+
 #### Connecting to New Central
 
 Enter the New Central **Base URL** and **Access Token**, then click
@@ -356,32 +391,92 @@ Deselected APs are not re-submitted to the site assignment API. The device
 group step independently checks group membership and skips APs already in
 the correct group.
 
+#### Device group assignment configuration
+
+The **Device Group Assignment** section appears below the site mapping panel.
+
+**Enable/disable toggle**
+
+Checked by default. When unchecked, device group assignment is skipped
+entirely — APs are only assigned to sites and the second import phase does
+not run. The toggle state is sent to the backend as `include_device_groups`
+in the import request body.
+
+**Device group naming convention**
+
+Device group names are derived from the AP model string recorded in
+`ap_inventory.json` at export time, using the pattern:
+
+```
+Aruba_<model>
+```
+
+Examples:
+
+| AP Model (from export) | New Central Device Group |
+|------------------------|--------------------------|
+| AP-515 | Aruba_AP-515 |
+| AP-635 | Aruba_AP-635 |
+| AP-555 | Aruba_AP-555 |
+
+The model string is captured during export from the Classic Central
+monitoring API (`GET /monitoring/v2/aps`) and stored in `ap_inventory.json`
+under the `"model"` key. It matches the model name shown in the Classic
+Central device list UI. No manual configuration of group names is required.
+
+**Preview table**
+
+When device group assignment is enabled, a collapsible `<details>` table
+is rendered below the toggle. It lists every unique AP model found across
+the currently selected groups, the device group it will be moved into, and
+the number of APs of that model selected for import.
+
+The table is computed from:
+- `apData[groupName]` — AP details loaded when a group row is expanded
+- `apSelections[groupName]` — the current per-group AP checkbox state
+- `apMemberships[serial]` — APs already in the target site are excluded
+
+The table updates live whenever groups are selected/deselected, AP
+checkboxes change, or membership data loads from New Central. If AP detail
+has not yet been loaded for a group (expand the group row in the site
+mapping table to trigger the load), the table prompts you to do so.
+
 #### Verbose logging
 
 Check **Verbose logging** before clicking Import to log every API call,
-HTTP status code, and response body. Useful for diagnosing failures.
+HTTP status code, and response body in the progress log. Useful for
+diagnosing failures. The checkbox state is sent as `verbose: true` in the
+import request body.
 
 #### Import execution
 
-Click **↑ Import to New Central**. Two phases run sequentially:
+Click **↑ Import to New Central**. Two phases run sequentially.
 
 **Phase 1 — Site assignment**
 
-For each selected group:
-1. Collects the selected AP serials
+For each selected group with a site mapping:
+1. Collects the selected AP serials (those not auto-deselected as already
+   in the target site)
 2. Sends them in batches of 50 to `POST /central/v2/sites/associations`
 
-**Phase 2 — Device group assignment**
+**Phase 2 — Device group assignment** (skipped if toggle is off)
 
 After all site assignments complete:
-1. Fetches the list of existing New Central device groups
-   (`GET /configuration/v2/groups`)
-2. Fetches each AP's current group via `GET /monitoring/v2/aps`
-3. For each AP model present in the import:
-   - Creates `Aruba_<model>` group if it does not already exist
-   - Moves APs not already in that group via
-     `POST /configuration/v1/devices/move`
-   - APs already in the correct group are logged as skipped
+1. Reads `ap_inventory.json` from each selected group's export directory to
+   build a `model → [serials]` map. The model string in this file is the
+   source of truth for device group naming.
+2. Fetches all existing New Central device groups
+   (`GET /configuration/v2/groups`) to avoid redundant creation attempts
+3. Fetches each AP's current device group via
+   `GET /monitoring/v2/aps?fields=serial,group_name`
+4. For each unique model across all selected groups:
+   - Computes target group name: `Aruba_<model>`
+   - Creates the group if it does not already exist
+     (`POST /configuration/v2/groups` with `NewCentral: true`, AOS10,
+     AP-only properties)
+   - Skips APs already in the correct group (logged as "already assigned")
+   - Moves remaining APs via `POST /configuration/v1/devices/move` in
+     batches of 50
 
 #### Result cards
 
@@ -396,13 +491,48 @@ Click the summary line on a card to expand the AP list:
 
 ### Data tab
 
-**Purpose:** Inspect exported configuration on disk without API calls.
+**Purpose:** Inspect exported configuration on disk without API calls, and
+manage labels that can be used to scope imports.
 
 - Sidebar lists all exported groups with AP counts and file indicators
 - Click a group to view: group properties, AP inventory table, and
   AOS10 CLI configuration (syntax-highlighted)
 - **Filter groups…** box filters by name (case-insensitive substring)
 - **⎘ Copy** button copies the raw CLI config to clipboard
+
+#### Labels
+
+Labels are colored tags you create and assign to exported groups. They
+serve two purposes: visual organisation in the Data tab and scoped group
+selection in the Import tab.
+
+**Creating labels**
+
+The **Labels** panel at the top of the Data tab sidebar lists all defined
+labels. Type a name (up to 32 characters) in the input field and click
+**+ Add** (or press Enter). Colors are assigned automatically from a
+fixed palette based on the label name — the same name always gets the same
+color.
+
+**Assigning labels to groups**
+
+Labels can be assigned from two places:
+
+- **Group list** — each group row in the Data sidebar shows colored label
+  chips below the group name. Dimmed chips are unassigned; bright chips are
+  assigned. Click any chip to toggle it.
+- **Group detail panel** — when a group is selected, a **Labels** row
+  appears at the top of the detail view with the same toggle chips.
+
+A group can have multiple labels. Label assignments are saved immediately to
+`exports/labels.json` and persist across browser sessions and container
+restarts.
+
+**Deleting labels**
+
+Click a label chip in the Labels manager panel to delete it. Deletion
+removes the label from all groups and clears it from the Import tab filter.
+A confirmation prompt is shown before deletion.
 
 #### Sample export
 
@@ -417,6 +547,75 @@ Used for testing the import workflow without a live Classic Central source.
 The sample group appears in the Import tab with a yellow **TEST** badge.
 The data tab shows the group with a TEST indicator. Disable it before
 running a production import.
+
+---
+
+### Backup tab
+
+**Purpose:** Create, restore, and delete compressed archives of the entire
+`exports/` directory so you can snapshot the current export state before
+destructive operations (restores, re-exports, or editing `manifest.json`).
+
+#### Backup location
+
+The backup directory path is shown at the top of the panel. By default
+backups are written to `backups/` alongside `exports/`. Customise the path
+with the `BACKUP_DIR` environment variable:
+
+```yaml
+# docker-compose.yml
+environment:
+  - BACKUP_DIR=/data/central-backups
+```
+
+In Docker, mount the directory as a volume if you want backups to persist
+outside the container filesystem:
+
+```yaml
+volumes:
+  - ./exports:/app/exports
+  - ./backups:/app/backups
+```
+
+#### Creating a backup
+
+Click **↓ Create Backup** in the sidebar. The tool compresses the entire
+`exports/` directory into a `.tar.gz` archive named:
+
+```
+exports_YYYYMMDDTHHMMSSZ.tar.gz
+```
+
+The timestamp is UTC. A backup requires at least one completed export
+(`manifest.json` must exist). The result is logged with the filename and
+compressed size.
+
+#### Backup list
+
+The main panel lists all existing backups in reverse-chronological order:
+
+| Column | Description |
+|--------|-------------|
+| Filename | Archive name including timestamp |
+| Size | Compressed file size |
+| Created | UTC timestamp from the file modification time |
+
+#### Restoring a backup
+
+Click **↑ Restore** next to any backup. This operation:
+
+1. Clears the entire current `exports/` directory
+2. Extracts the selected archive into `exports/`
+3. Path-traversal safety is enforced — only paths inside `exports/` are extracted
+
+After a successful restore, any data previously in `exports/` is gone.
+Create a backup of the current state first if it needs to be preserved.
+The Data and Import tabs immediately reflect the restored content.
+
+#### Deleting a backup
+
+Click **✕ Delete** next to a backup. A confirmation prompt is shown.
+Deletion is permanent and cannot be undone.
 
 ---
 
@@ -648,6 +847,7 @@ Start New Central import. Request body:
   "base_url": "https://...",
   "token": "<access-token>",
   "verbose": true,
+  "include_device_groups": true,
   "mappings": {
     "Branch-APs": {
       "site_id": 43,
@@ -656,6 +856,14 @@ Start New Central import. Request body:
   }
 }
 ```
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `base_url` | string | required | New Central API gateway base URL |
+| `token` | string | required | Access token |
+| `mappings` | object | required | `{group_name: {site_id, serials?}}` — groups to process |
+| `verbose` | boolean | `false` | Emit detailed `log` SSE events for every API call |
+| `include_device_groups` | boolean | `true` | Run Phase 2 device group assignment after site assignment. When `false`, Phase 2 is skipped entirely and `dg_results` is an empty array in the `complete` event. |
 
 SSE events:
 
@@ -666,6 +874,18 @@ SSE events:
 | `group_done` | `{"group": "...", "site_id": 43, "status": "ok|fail|missing", "ap_count": 1, "serials": [...], "failed_serials": [...], "steps": [...]}` |
 | `complete` | `{"total": 2, "dg_results": [{"model": "AP-515", "group_name": "Aruba_AP-515", "total": 1, "ok": true, "serials": [...], "skipped_serials": [...], "failed_serials": [...]}]}` |
 | `error` | `{"message": "..."}` |
+
+**`dg_results` entries** — one per unique AP model:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `model` | string | AP model string from `ap_inventory.json` (e.g. `"AP-515"`) |
+| `group_name` | string | New Central device group name (`"Aruba_AP-515"`) |
+| `total` | int | Total AP serials processed for this model |
+| `ok` | bool | `true` if group creation and all moves succeeded |
+| `serials` | array | All serials attempted |
+| `skipped_serials` | array | Serials already in the correct group (not re-moved) |
+| `failed_serials` | array | Serials whose move API call failed |
 
 ### POST /api/import/new-central/sites
 
@@ -697,6 +917,98 @@ Return current site and device-group membership for a list of AP serials.
 ### GET /api/sample — POST /api/sample
 
 Read or write the sample export configuration used for testing.
+
+### GET /api/labels
+
+Return all label definitions and current group assignments.
+
+**Response:**
+```json
+{
+  "ok": true,
+  "definitions": ["Production", "Branch", "Lab"],
+  "assignments": {
+    "Branch-APs": ["Production", "Branch"],
+    "Lab-APs":    ["Lab"]
+  }
+}
+```
+
+### POST /api/labels
+
+Create a new label.
+
+**Request:** `{"name": "Production"}`
+
+**Response:** `{"ok": true, "definitions": ["Production"]}`
+
+Returns HTTP 409 if the label already exists.
+
+### DELETE /api/labels/{name}
+
+Delete a label and remove it from all group assignments.
+
+**Response:** `{"ok": true, "definitions": [...], "assignments": {...}}`
+
+### PUT /api/groups/{name}/labels
+
+Set (replace) the label list for a group. Only labels that exist in
+`definitions` are accepted; unknown labels are silently dropped.
+
+**Request:** `{"labels": ["Production", "Branch"]}`
+
+**Response:** `{"ok": true, "labels": ["Production", "Branch"]}`
+
+---
+
+### GET /api/backups
+
+List all backup archives in the backup directory.
+
+**Response:**
+```json
+{
+  "ok": true,
+  "backup_dir": "/app/backups",
+  "backups": [
+    {
+      "filename": "exports_20260429T143000Z.tar.gz",
+      "size": 204800,
+      "created_at": "2026-04-29T14:30:00Z"
+    }
+  ]
+}
+```
+
+### POST /api/backup
+
+Create a backup of the current `exports/` directory.
+
+Returns HTTP 400 if no export exists (`manifest.json` not found).
+
+**Response:**
+```json
+{"ok": true, "filename": "exports_20260429T143000Z.tar.gz", "size": 204800}
+```
+
+### POST /api/restore
+
+Restore `exports/` from a backup archive. Clears the current `exports/`
+directory before extracting. Path traversal is blocked at the server.
+
+**Request:** `{"filename": "exports_20260429T143000Z.tar.gz"}`
+
+**Response:** `{"ok": true, "filename": "exports_20260429T143000Z.tar.gz"}`
+
+Returns HTTP 400 for an invalid filename, HTTP 404 if the backup is not found.
+
+### DELETE /api/backups/{filename}
+
+Delete a backup archive permanently.
+
+**Response:** `{"ok": true}`
+
+Returns HTTP 404 if the file is not found.
 
 ### GET /health
 
