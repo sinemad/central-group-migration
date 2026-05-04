@@ -16,7 +16,7 @@ from flask_cors import CORS
 from pycentral.classic.base import ArubaCentralBase
 from pycentral.classic.configuration import Groups
 from exporters import get_active_exporters
-from new_central_importer import get_existing_sites, import_group_to_site, import_device_groups, assign_aps_to_site
+from new_central_importer import get_existing_sites, import_group_to_site, import_device_groups, assign_aps_to_site, get_24ghz_ap515_serials, _normalize_ap_model
 
 app = Flask(__name__)
 CORS(app)
@@ -687,6 +687,7 @@ def start_import_new_central():
     mappings              = body.get("mappings", {})   # {group_name: site_id}
     verbose               = bool(body.get("verbose", False))
     include_device_groups = bool(body.get("include_device_groups", True))
+    include_24ghz_group   = bool(body.get("include_24ghz_group", True))
     if not base_url or not token:
         return jsonify({"ok": False, "error": "base_url and token required"}), 400
     if not mappings:
@@ -808,7 +809,7 @@ def start_import_new_central():
                                "detail": f"{assigned}/{len(serials)} assigned"}],
                 })
 
-            # --- Device group assignment (Aruba_<model>) ---
+            # --- Device group assignment (Aruba_AP-<model>) ---
             if not include_device_groups:
                 _emit(q, "log", {"level": "info",
                                  "message": "── Device group assignment skipped (disabled)"})
@@ -818,6 +819,7 @@ def start_import_new_central():
             _emit(q, "log", {"level": "info", "message": "── Device group assignment"})
             dg_models: dict[str, list[str]] = {}
             dg_seen: set[str] = set()
+            serial_to_gdir: dict[str, str] = {}
             for gn in groups:
                 mi = mappings[gn]
                 explicit = mi.get("serials") if isinstance(mi, dict) else None
@@ -830,10 +832,11 @@ def start_import_new_central():
                     inv = [e for e in inv if e.get("serial") in ex_set]
                 for entry in inv:
                     serial = (entry.get("serial") or "").strip()
-                    model  = (entry.get("model")  or "").strip()
+                    model  = _normalize_ap_model((entry.get("model") or "").strip())
                     if serial and model and serial not in dg_seen:
                         dg_seen.add(serial)
                         dg_models.setdefault(model, []).append(serial)
+                        serial_to_gdir[serial] = gdir
 
             dg_results: list[dict] = []
             if not dg_models:
@@ -911,9 +914,106 @@ def start_import_new_central():
                 for s in all_dg_serials:
                     vlog(f"  AP {s} current group: {ap_current_group.get(s, '(unknown)')!r}")
 
-                # Step 3: per-model create (if needed) + move (if not already member)
+                # Step 3a: 2.4 GHz AP-515 special group (runs before model loop)
+                _DG_24GHZ = "2_4GHz-Devices"
+                if include_24ghz_group and "515" in dg_models:
+                    serials_515 = dg_models["515"]
+                    serials_24ghz: list[str] = []
+                    for s515 in serials_515:
+                        gd = serial_to_gdir.get(s515, "")
+                        if gd:
+                            serials_24ghz.extend(get_24ghz_ap515_serials(gd, [s515]))
+
+                    if serials_24ghz:
+                        vlog(f"  2.4 GHz AP-515 routing: {len(serials_24ghz)} AP(s) → {_DG_24GHZ!r}")
+                        _emit(q, "log", {"level": "info",
+                                         "message": f"── 2.4 GHz AP-515s: {len(serials_24ghz)} AP(s) → {_DG_24GHZ}"})
+
+                        if _DG_24GHZ in existing_dg:
+                            vlog(f"  Group {_DG_24GHZ!r} already exists — skipping creation")
+                            g24_ok = True
+                        else:
+                            cr24 = conn.command(
+                                apiMethod="POST",
+                                apiPath="/configuration/v2/groups",
+                                apiData={
+                                    "group": _DG_24GHZ,
+                                    "group_attributes": {
+                                        "template_info": {"Wired": False, "Wireless": True},
+                                        "group_properties": {
+                                            "AllowedDevTypes": ["AccessPoints"],
+                                            "AOSVersion":      "AOS10",
+                                            "NewCentral":      True,
+                                        },
+                                    },
+                                },
+                            )
+                            cr24_code = cr24.get("code")
+                            cr24_body = cr24.get("msg") or {}
+                            cr24_desc = (cr24_body.get("description") or "") if isinstance(cr24_body, dict) else str(cr24_body)
+                            vlog(f"  Create {_DG_24GHZ!r}: HTTP {cr24_code}  {cr24_desc[:200]}")
+                            g24_ok = cr24_code in (200, 201) or "already exists" in cr24_desc.lower()
+                            if g24_ok:
+                                existing_dg.add(_DG_24GHZ)
+
+                        dg24_failed: list[str] = []
+                        already_24: list[str]  = []
+                        assign24_ok = True
+                        if g24_ok:
+                            to_move_24 = [s for s in serials_24ghz
+                                          if ap_current_group.get(s) != _DG_24GHZ]
+                            already_24 = [s for s in serials_24ghz
+                                          if ap_current_group.get(s) == _DG_24GHZ]
+                            if already_24:
+                                _emit(q, "log", {"level": "info",
+                                                 "message": f"  {len(already_24)} AP(s) already in {_DG_24GHZ!r} — skipped"})
+                            if to_move_24:
+                                for chunk in _chunked(to_move_24, _CHUNK_SIZE):
+                                    vlog(f"  Move chunk to {_DG_24GHZ!r}: {chunk}")
+                                    mv24 = conn.command(
+                                        apiMethod="POST",
+                                        apiPath="/configuration/v1/devices/move",
+                                        apiData={"group": _DG_24GHZ, "serials": chunk},
+                                    )
+                                    mv24_code = mv24.get("code")
+                                    vlog(f"  Move response: HTTP {mv24_code}")
+                                    if mv24_code not in (200, 201):
+                                        assign24_ok = False
+                                        dg24_failed.extend(chunk)
+                            else:
+                                _emit(q, "log", {"level": "info",
+                                                 "message": f"  All 2.4 GHz AP-515s already in {_DG_24GHZ!r}"})
+                        else:
+                            assign24_ok = False
+                            dg24_failed = list(serials_24ghz)
+
+                        overall_24 = g24_ok and assign24_ok
+                        moved_24   = len(serials_24ghz) - len(dg24_failed)
+                        _emit(q, "log", {
+                            "level":   "info" if overall_24 else "error",
+                            "message": f"  {_DG_24GHZ}: {moved_24}/{len(serials_24ghz)} APs moved — {'OK' if overall_24 else 'FAILED'}",
+                        })
+                        dg_results.append({
+                            "model":           "2_4GHz AP-515",
+                            "group_name":      _DG_24GHZ,
+                            "total":           len(serials_24ghz),
+                            "ok":              overall_24,
+                            "serials":         serials_24ghz,
+                            "skipped_serials": already_24,
+                            "failed_serials":  dg24_failed,
+                        })
+
+                        # Remove 2.4 GHz APs from the model-based 515 bucket
+                        set_24ghz = set(serials_24ghz)
+                        remaining_515 = [s for s in serials_515 if s not in set_24ghz]
+                        if remaining_515:
+                            dg_models["515"] = remaining_515
+                        else:
+                            del dg_models["515"]
+
+                # Step 3b: per-model create (if needed) + move (if not already member)
                 for model, serials in sorted(dg_models.items()):
-                    dg_name = f"Aruba_{model}"
+                    dg_name = f"Aruba_AP-{model}"
                     vlog(f"  Model {model}: {len(serials)} AP(s) → device group {dg_name!r}")
 
                     # Create only if the group doesn't already exist

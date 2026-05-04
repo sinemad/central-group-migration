@@ -140,7 +140,7 @@ group's export. Each AP row shows:
 - **IN SITE** badge (amber) — the AP is already assigned to the target site
   and will be automatically deselected
 - **IN GROUP** badge (blue) — the AP is already in its expected New Central
-  device group (`Aruba_<model>`)
+  device group (`Aruba_AP-<model>`)
 
 Use the **All** / **None** buttons or individual checkboxes to control which
 APs are imported. Membership data is fetched automatically from New Central
@@ -161,7 +161,7 @@ Device group names are derived automatically from the AP model strings
 recorded in `ap_inventory.json` during export, using the convention:
 
 ```
-Aruba_<model>
+Aruba_AP-<model>
 ```
 
 For example, an AP-515 is placed in a group named `Aruba_AP-515` and an
@@ -201,7 +201,7 @@ tool:
 
 1. Reads AP models from `ap_inventory.json` in each group's export directory
 2. Checks which device groups already exist in New Central
-3. Creates any missing `Aruba_<model>` groups (New Central, AOS10, AP-only)
+3. Creates any missing `Aruba_AP-<model>` groups (New Central, AOS10, AP-only)
 4. Checks each AP's current device group via the monitoring API
 5. Moves only APs not already in the correct group
 

@@ -450,7 +450,7 @@ def import_device_groups(
     }
 
     for model, serials in sorted(all_models.items()):
-        group_name = f"Aruba_{model}"
+        group_name = f"Aruba_AP-{_normalize_ap_model(model)}"
         group_ok = create_device_group(conn, group_name)
 
         if group_ok:
@@ -470,4 +470,51 @@ def import_device_groups(
         else:
             result["fail_count"] += 1
 
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Model normalisation
+# ---------------------------------------------------------------------------
+
+def _normalize_ap_model(model: str) -> str:
+    """Return the bare model number with any leading 'AP-' prefix stripped.
+
+    Classic Central may return the model as '515' or 'AP-515' depending on
+    the firmware version.  Normalising to the bare number lets us build
+    consistent device group names regardless of the source format.
+
+    Examples: 'AP-515' → '515',  '515' → '515',  'AP-505H' → '505H'
+    """
+    m = model.strip()
+    if m.upper().startswith("AP-"):
+        return m[3:]
+    return m
+
+
+# ---------------------------------------------------------------------------
+# 2.4 GHz AP-515 identification
+# ---------------------------------------------------------------------------
+
+def get_24ghz_ap515_serials(group_dir: str, serials: list[str]) -> list[str]:
+    """Return serials from *serials* whose 2.4 GHz radio is enabled.
+
+    Reads ap_settings/<serial>.json and returns serials where
+    dot11g_radio_disable is explicitly False.  Serials with no settings
+    file, or where the field is absent or True, are excluded so that only
+    confirmed 2.4 GHz-enabled APs are routed to the special group.
+    """
+    result = []
+    sett_dir = os.path.join(group_dir, "ap_settings")
+    for serial in serials:
+        p = os.path.join(sett_dir, f"{serial}.json")
+        if not os.path.exists(p):
+            continue
+        try:
+            with open(p) as f:
+                settings = json.load(f)
+            if settings.get("dot11g_radio_disable") is False:
+                result.append(serial)
+        except Exception:
+            pass
     return result

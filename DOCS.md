@@ -385,7 +385,7 @@ tool automatically fetches current AP memberships from New Central
 | Badge | Colour | Meaning |
 |-------|--------|---------|
 | **IN SITE** | Amber | AP is already assigned to the target site — auto-deselected |
-| **IN GROUP** | Blue | AP is already in its expected `Aruba_<model>` device group |
+| **IN GROUP** | Blue | AP is already in its expected `Aruba_AP-<model>` device group |
 
 Deselected APs are not re-submitted to the site assignment API. The device
 group step independently checks group membership and skips APs already in
@@ -408,7 +408,7 @@ Device group names are derived from the AP model string recorded in
 `ap_inventory.json` at export time, using the pattern:
 
 ```
-Aruba_<model>
+Aruba_AP-<model>
 ```
 
 Examples:
@@ -470,7 +470,7 @@ After all site assignments complete:
 3. Fetches each AP's current device group via
    `GET /monitoring/v2/aps?fields=serial,group_name`
 4. For each unique model across all selected groups:
-   - Computes target group name: `Aruba_<model>`
+   - Computes target group name: `Aruba_AP-<model>`
    - Creates the group if it does not already exist
      (`POST /configuration/v2/groups` with `NewCentral: true`, AOS10,
      AP-only properties)

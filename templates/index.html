@@ -267,6 +267,8 @@
   .log-info  .log-msg { color: var(--blue); }
   .log-debug .log-msg { color: var(--muted); font-size: 10.5px; }
   .log-debug .log-ts  { font-size: 10.5px; }
+  .progress-strip { padding: 12px 28px 14px; border-bottom: 1px solid var(--border); background: var(--surface); flex-shrink: 0; }
+  .progress-strip .progress-section { margin-bottom: 10px; }
   .progress-section { margin-bottom: 24px; }
   .progress-label { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 11px; color: var(--muted); margin-bottom: 6px; }
   .progress-bar  { height: 3px; background: var(--border); border-radius: 2px; overflow: hidden; }
@@ -649,6 +651,18 @@
         <div class="panel-title">Export — Group Configuration</div>
         <button class="btn btn-outline btn-sm hidden" id="exp-clear-btn" onclick="clearExportResults()">Clear</button>
       </div>
+      <!-- Progress strip — stays fixed above the scrollable body -->
+      <div class="progress-strip hidden" id="exp-progress-strip">
+        <div class="progress-section">
+          <div class="progress-label"><span id="exp-prog-label">Ready</span><span id="exp-prog-pct">0%</span></div>
+          <div class="progress-bar"><div class="progress-fill" id="exp-prog-fill"></div></div>
+        </div>
+        <div class="stats">
+          <div class="stat ok">  <div class="stat-num" id="exp-n-ok">0</div>  <div class="stat-label">Exported</div></div>
+          <div class="stat warn"><div class="stat-num" id="exp-n-warn">0</div><div class="stat-label">Warnings</div></div>
+          <div class="stat fail"><div class="stat-num" id="exp-n-fail">0</div><div class="stat-label">Failed</div></div>
+        </div>
+      </div>
       <div class="panel-body">
         <div class="empty" id="exp-empty">
           <div class="empty-icon">⬡</div>
@@ -656,16 +670,6 @@
           Exported files are written to <code style="font-family:var(--mono);color:var(--amber)">exports/</code>
         </div>
         <div class="hidden" id="exp-results">
-          <div class="section-heading">Progress</div>
-          <div class="progress-section">
-            <div class="progress-label"><span id="exp-prog-label">Ready</span><span id="exp-prog-pct">0%</span></div>
-            <div class="progress-bar"><div class="progress-fill" id="exp-prog-fill"></div></div>
-          </div>
-          <div class="stats">
-            <div class="stat ok">  <div class="stat-num" id="exp-n-ok">0</div>  <div class="stat-label">Exported</div></div>
-            <div class="stat warn"><div class="stat-num" id="exp-n-warn">0</div><div class="stat-label">Warnings</div></div>
-            <div class="stat fail"><div class="stat-num" id="exp-n-fail">0</div><div class="stat-label">Failed</div></div>
-          </div>
           <div class="section-heading">Groups</div>
           <div class="results-grid" id="exp-cards"></div>
           <div class="section-heading mt16">Log</div>
@@ -679,6 +683,18 @@
       <div class="panel-header">
         <div class="panel-title" id="imp-panel-title">Import — New Central AP Migration</div>
         <button class="btn btn-outline btn-sm hidden" id="imp-clear-btn" onclick="clearImportResults()">Clear</button>
+      </div>
+      <!-- Progress strip — stays fixed above the scrollable body -->
+      <div class="progress-strip hidden" id="imp-progress-strip">
+        <div class="progress-section">
+          <div class="progress-label"><span id="imp-prog-label">Ready</span><span id="imp-prog-pct">0%</span></div>
+          <div class="progress-bar"><div class="progress-fill" id="imp-prog-fill"></div></div>
+        </div>
+        <div class="stats">
+          <div class="stat ok">  <div class="stat-num" id="imp-n-ok">0</div>  <div class="stat-label">APs Assigned</div></div>
+          <div class="stat warn"><div class="stat-num" id="imp-n-skip">0</div><div class="stat-label">Skipped</div></div>
+          <div class="stat fail"><div class="stat-num" id="imp-n-fail">0</div><div class="stat-label">Failed</div></div>
+        </div>
       </div>
       <div class="panel-body">
         <div class="empty" id="imp-empty">
@@ -705,7 +721,11 @@
           <div class="section-heading" style="margin-top:20px">Device Group Assignment</div>
           <label class="dg-config-toggle">
             <input type="checkbox" id="imp-dg-enabled" checked onchange="renderDeviceGroupConfig()">
-            Assign APs to New Central device groups (naming: <span style="color:var(--amber);font-style:italic">Aruba_&lt;model&gt;</span>)
+            Assign APs to New Central device groups (naming: <span style="color:var(--amber);font-style:italic">Aruba_AP-&lt;model&gt;</span>)
+          </label>
+          <label class="dg-config-toggle hidden" id="imp-24ghz-toggle" style="margin-top:6px;padding-left:22px;font-size:11px">
+            <input type="checkbox" id="imp-24ghz-enabled" checked onchange="renderDeviceGroupConfig()">
+            Route 2.4 GHz-enabled AP-515s to <span style="color:var(--amber);font-style:italic">2_4GHz-Devices</span> before model groups
           </label>
           <div id="imp-dg-content"></div>
         </div>
@@ -718,16 +738,6 @@
           <div class="hidden group-detail" id="imp-group-detail"></div>
         </div>
         <div class="hidden" id="imp-results">
-          <div class="section-heading">Progress</div>
-          <div class="progress-section">
-            <div class="progress-label"><span id="imp-prog-label">Ready</span><span id="imp-prog-pct">0%</span></div>
-            <div class="progress-bar"><div class="progress-fill" id="imp-prog-fill"></div></div>
-          </div>
-          <div class="stats">
-            <div class="stat ok">  <div class="stat-num" id="imp-n-ok">0</div>  <div class="stat-label">APs Assigned</div></div>
-            <div class="stat warn"><div class="stat-num" id="imp-n-skip">0</div><div class="stat-label">Skipped</div></div>
-            <div class="stat fail"><div class="stat-num" id="imp-n-fail">0</div><div class="stat-label">Failed</div></div>
-          </div>
           <div class="section-heading" id="imp-groups-heading">Sites</div>
           <div class="results-grid" id="imp-cards"></div>
           <div class="section-heading mt16">Log</div>
@@ -1041,6 +1051,7 @@ async function runExport() {
   const token = document.getElementById('exp-token').value.trim();
   busy = true; setStatus('busy','Exporting…');
   document.getElementById('exp-empty').classList.add('hidden');
+  document.getElementById('exp-progress-strip').classList.remove('hidden');
   document.getElementById('exp-results').classList.remove('hidden');
   document.getElementById('exp-clear-btn').classList.add('hidden');
   document.getElementById('exp-cards').innerHTML = document.getElementById('exp-log').innerHTML = '';
@@ -1063,7 +1074,7 @@ async function runExport() {
   es.addEventListener('error', e => { try{log('exp-log','Error: '+JSON.parse(e.data).message,'err');}catch{} setStatus('error','Export failed'); busy=false; es.close(); });
   es.onerror = () => { if(!busy)return; busy=false; setStatus('error','Connection lost'); es.close(); };
 }
-function clearExportResults() { document.getElementById('exp-results').classList.add('hidden'); document.getElementById('exp-empty').classList.remove('hidden'); document.getElementById('exp-clear-btn').classList.add('hidden'); }
+function clearExportResults() { document.getElementById('exp-progress-strip').classList.add('hidden'); document.getElementById('exp-results').classList.add('hidden'); document.getElementById('exp-empty').classList.remove('hidden'); document.getElementById('exp-clear-btn').classList.add('hidden'); }
 
 // ── Import ────────────────────────────────────────────────────────────────
 
@@ -1215,7 +1226,7 @@ function renderSiteMapping() {
         const apRows = aps.map(ap => {
           const mem          = apMemberships[ap.serial];
           const inSite       = mem && targetSiteName && mem.site_name  === targetSiteName;
-          const expectedGroup= ap.model ? `Aruba_${ap.model}` : null;
+          const expectedGroup= ap.model ? `Aruba_AP-${_normalizeApModel(ap.model)}` : null;
           const inGroup      = mem && expectedGroup && mem.device_group === expectedGroup;
           const checked      = !inSite && (!selSet || selSet.has(ap.serial));
           const hostname     = (ap.settings && ap.settings.hostname) || ap.name || '—';
@@ -1275,22 +1286,28 @@ function renderSiteMapping() {
 }
 
 function renderDeviceGroupConfig() {
-  const section  = document.getElementById('imp-dg-section');
-  const content  = document.getElementById('imp-dg-content');
-  const selected = impGroups.filter(g => impSelected.has(g.name));
+  const section      = document.getElementById('imp-dg-section');
+  const content      = document.getElementById('imp-dg-content');
+  const toggle24El   = document.getElementById('imp-24ghz-toggle');
+  const selected     = impGroups.filter(g => impSelected.has(g.name));
 
   if (!ncSites.length || !selected.length) { section.classList.add('hidden'); return; }
   section.classList.remove('hidden');
 
   const enabled = document.getElementById('imp-dg-enabled').checked;
   if (!enabled) {
+    toggle24El.classList.add('hidden');
     content.innerHTML = `<p style="font-family:var(--mono);font-size:10px;color:var(--muted);margin-top:8px">
       Device group assignment is disabled — APs will only be assigned to their mapped sites.</p>`;
     return;
   }
+  toggle24El.classList.remove('hidden');
+  const enabled24 = document.getElementById('imp-24ghz-enabled').checked;
 
-  // Build model → serials from selected groups + AP selections (exclude already-in-site APs)
-  const modelMap = {};
+  // Build model → serials; AP-515s with 2.4 GHz enabled are split into a separate bucket
+  const modelMap    = {};   // non-2.4GHz APs keyed by model string
+  const serials24ghz = [];  // AP-515s with dot11g_radio_disable === false
+
   for (const g of selected) {
     const aps    = apData[g.name] || [];
     const sel    = apSelections[g.name];
@@ -1298,18 +1315,29 @@ function renderDeviceGroupConfig() {
     const targetSite = siteId !== undefined ? (ncSites.find(s => s.site_id === siteId) || {}).site_name : null;
     for (const ap of aps) {
       if (!ap.model) continue;
-      if (sel && !sel.has(ap.serial)) continue;                                   // not selected for import
+      if (sel && !sel.has(ap.serial)) continue;
       const mem = apMemberships[ap.serial];
-      if (mem && targetSite && mem.site_name === targetSite) continue;            // already in site
-      if (!modelMap[ap.model]) modelMap[ap.model] = [];
-      modelMap[ap.model].push(ap.serial);
+      if (mem && targetSite && mem.site_name === targetSite) continue;
+
+      const normModel = _normalizeApModel(ap.model);
+      const is24ghz = enabled24
+        && normModel === '515'
+        && ap.settings
+        && ap.settings.dot11g_radio_disable === false;
+
+      if (is24ghz) {
+        serials24ghz.push(ap.serial);
+      } else {
+        if (!modelMap[normModel]) modelMap[normModel] = [];
+        modelMap[normModel].push(ap.serial);
+      }
     }
   }
 
   const models = Object.keys(modelMap).sort();
   const anyApDataLoaded = selected.some(g => apData[g.name] !== undefined);
 
-  if (!models.length) {
+  if (!models.length && !serials24ghz.length) {
     content.innerHTML = `<p style="font-family:var(--mono);font-size:10px;color:var(--muted);margin-top:8px">${
       anyApDataLoaded
         ? 'No APs with model data found in selected groups.'
@@ -1318,22 +1346,38 @@ function renderDeviceGroupConfig() {
     return;
   }
 
-  const totalAPs = models.reduce((s, m) => s + modelMap[m].length, 0);
-  const rows = models.map(m => {
-    const dgName = `Aruba_${m}`;
-    const count  = modelMap[m].length;
-    return `<tr>
+  // 2.4 GHz row first, then model rows
+  let rows = '';
+  let rowCount = 0;
+  let totalAPs = 0;
+
+  if (serials24ghz.length) {
+    rowCount++;
+    totalAPs += serials24ghz.length;
+    rows += `<tr>
+      <td style="color:var(--text-hi)">AP-515 <span style="font-size:9px;color:var(--muted)">(2.4 GHz enabled)</span></td>
+      <td style="color:var(--amber)">2_4GHz-Devices</td>
+      <td style="text-align:right;color:var(--muted)">${serials24ghz.length} AP${serials24ghz.length !== 1 ? 's' : ''}</td>
+    </tr>`;
+  }
+
+  for (const m of models) {
+    rowCount++;
+    const count = modelMap[m].length;
+    totalAPs += count;
+    const dgName = `Aruba_AP-${m}`;
+    rows += `<tr>
       <td style="color:var(--text-hi)">${_escHtml(m)}</td>
       <td style="color:var(--amber)">${_escHtml(dgName)}</td>
       <td style="text-align:right;color:var(--muted)">${count} AP${count !== 1 ? 's' : ''}</td>
     </tr>`;
-  }).join('');
+  }
 
   content.innerHTML = `
     <details class="dg-preview" open>
-      <summary>${models.length} model${models.length !== 1 ? 's' : ''} · ${totalAPs} AP${totalAPs !== 1 ? 's' : ''} to assign</summary>
+      <summary>${rowCount} group${rowCount !== 1 ? 's' : ''} · ${totalAPs} AP${totalAPs !== 1 ? 's' : ''} to assign</summary>
       <table class="dg-preview-table">
-        <thead><tr><th>AP Model</th><th>New Central Device Group</th><th style="text-align:right">APs</th></tr></thead>
+        <thead><tr><th>AP / Model</th><th>New Central Device Group</th><th style="text-align:right">APs</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </details>`;
@@ -1640,6 +1684,7 @@ async function runImportNewCentral() {
     return alert('No selected groups have a site mapping.\nUse the Site Mapping table to assign groups to New Central sites.');
 
   busy = true; setStatus('busy', 'Assigning APs to New Central sites…');
+  document.getElementById('imp-progress-strip').classList.remove('hidden');
   document.getElementById('imp-results').classList.remove('hidden');
   document.getElementById('imp-clear-btn').classList.add('hidden');
   document.getElementById('imp-cards').innerHTML = document.getElementById('imp-log').innerHTML = '';
@@ -1648,10 +1693,11 @@ async function runImportNewCentral() {
 
   const verbose              = document.getElementById('imp-verbose-chk')?.checked || false;
   const include_device_groups = document.getElementById('imp-dg-enabled')?.checked ?? true;
+  const include_24ghz_group   = include_device_groups && (document.getElementById('imp-24ghz-enabled')?.checked ?? true);
 
   const {op_id} = await fetch('/api/import/new-central', {
     method: 'POST', headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({base_url: url, token, mappings, verbose, include_device_groups}),
+    body: JSON.stringify({base_url: url, token, mappings, verbose, include_device_groups, include_24ghz_group}),
   }).then(r => r.json());
 
   const es = new EventSource(`/api/import/new-central/progress/${op_id}`);
@@ -1784,7 +1830,7 @@ function addDGCard(r) {
     ${apDetail}`;
   document.getElementById('imp-cards').appendChild(card);
 }
-function clearImportResults(){document.getElementById('imp-results').classList.add('hidden');document.getElementById('imp-clear-btn').classList.add('hidden');}
+function clearImportResults(){document.getElementById('imp-progress-strip').classList.add('hidden');document.getElementById('imp-results').classList.add('hidden');document.getElementById('imp-clear-btn').classList.add('hidden');}
 
 // ── Sample export ─────────────────────────────────────────────────────────
 async function loadSampleConfig() {
@@ -2302,6 +2348,11 @@ async function clearRename(groupName) {
 let _jtSeq = 0;
 function _jtId() { return `jn${++_jtSeq}`; }
 
+function _normalizeApModel(m) {
+  // Strip any leading 'AP-' prefix so the model key is always the bare number.
+  // Matches the Python _normalize_ap_model() in new_central_importer.py.
+  return m ? m.replace(/^AP-/i, '') : m;
+}
 function _escHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
