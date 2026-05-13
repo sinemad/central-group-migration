@@ -546,7 +546,12 @@
         <div class="empty"><div class="empty-icon">⬡</div>Connect to load groups</div>
       </div>
       <div class="sidebar-section" id="exp-run-section" style="display:none">
-        <button class="btn btn-primary btn-block" onclick="runExport()">↓ Export Selected</button>
+        <button class="btn btn-primary btn-block" onclick="runExport(false)">↓ Export Selected</button>
+        <button class="btn btn-outline btn-block" style="margin-top:6px" onclick="runExport(true)">↻ Update Selected</button>
+        <div class="field-hint" style="margin-top:8px">
+          <strong>Export Selected</strong> replaces the manifest.<br>
+          <strong>Update Selected</strong> re-exports chosen groups and merges them into the existing export, preserving all other groups and rename mappings.
+        </div>
       </div>
     </div>
 
@@ -1045,11 +1050,11 @@ function renderExpGroups() {
 function toggleExp(n) { expSelected.has(n)?expSelected.delete(n):expSelected.add(n); renderExpGroups(); }
 function selectAll(v) { expSelected = v?new Set(expGroups.map(g=>g.name)):new Set(); renderExpGroups(); }
 
-async function runExport() {
+async function runExport(update_mode) {
   if (busy || !expSelected.size) return;
   const url = document.getElementById('exp-url').value.trim();
   const token = document.getElementById('exp-token').value.trim();
-  busy = true; setStatus('busy','Exporting…');
+  busy = true; setStatus('busy', update_mode ? 'Updating…' : 'Exporting…');
   document.getElementById('exp-empty').classList.add('hidden');
   document.getElementById('exp-progress-strip').classList.remove('hidden');
   document.getElementById('exp-results').classList.remove('hidden');
@@ -1057,9 +1062,13 @@ async function runExport() {
   document.getElementById('exp-cards').innerHTML = document.getElementById('exp-log').innerHTML = '';
   resetStats('exp',0,0,0);
   let total=expSelected.size, done=0, nOk=0, nWarn=0, nFail=0;
-  const {op_id} = await (await fetch('/api/export',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({base_url:url,token,groups:[...expSelected]})})).json();
+  const {op_id} = await (await fetch('/api/export',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({base_url:url,token,groups:[...expSelected],update_mode})})).json();
   const es = new EventSource(`/api/export/progress/${op_id}`);
-  es.addEventListener('start', e => { const d=JSON.parse(e.data); total=d.total; log('exp-log',`Exporting ${total} groups`,'info'); setProgress('exp',0,total,'Exporting'); });
+  es.addEventListener('start', e => {
+    const d=JSON.parse(e.data); total=d.total;
+    log('exp-log', update_mode ? `Updating ${total} group${total!==1?'s':''}` : `Exporting ${total} group${total!==1?'s':''}`, 'info');
+    setProgress('exp',0,total, update_mode ? 'Updating' : 'Exporting');
+  });
   es.addEventListener('group_done', e => {
     const d=JSON.parse(e.data); done++;
     const cls=d.files.some(f=>f.status==='fail')?'fail':d.files.some(f=>f.status==='warn')?'warn':'ok';
@@ -1068,10 +1077,20 @@ async function runExport() {
     card.innerHTML=`<div><div class="result-name">${d.group}</div><div class="result-files">${d.files.map(f=>`<span class="result-file ${f.status}">${f.file}${f.detail?' ('+f.detail+')':''}</span>`).join('')}</div></div><div class="result-status ${cls}">${cls.toUpperCase()}</div>`;
     document.getElementById('exp-cards').appendChild(card);
     log('exp-log',`${d.group} — ${d.files.map(f=>f.file).join(', ')}`,cls==='ok'?'ok':'warn');
-    setProgress('exp',done,total,'Exporting'); resetStats('exp',nOk,nWarn,nFail);
+    setProgress('exp',done,total, update_mode ? 'Updating' : 'Exporting'); resetStats('exp',nOk,nWarn,nFail);
   });
-  es.addEventListener('complete', e => { const d=JSON.parse(e.data); log('exp-log',`Done — ${d.total} groups`,'ok'); setStatus('connected',`Export complete`); setProgress('exp',total,total,'Complete'); document.getElementById('exp-clear-btn').classList.remove('hidden'); busy=false; es.close(); });
-  es.addEventListener('error', e => { try{log('exp-log','Error: '+JSON.parse(e.data).message,'err');}catch{} setStatus('error','Export failed'); busy=false; es.close(); });
+  es.addEventListener('complete', e => {
+    const d=JSON.parse(e.data);
+    const summary = update_mode && d.preserved
+      ? `Done — ${d.total} group${d.total!==1?'s':''} updated, ${d.preserved} preserved (${d.total_groups} total)`
+      : `Done — ${d.total} group${d.total!==1?'s':''}`;
+    log('exp-log', summary, 'ok');
+    setStatus('connected', update_mode ? 'Update complete' : 'Export complete');
+    setProgress('exp',total,total,'Complete');
+    document.getElementById('exp-clear-btn').classList.remove('hidden');
+    busy=false; es.close();
+  });
+  es.addEventListener('error', e => { try{log('exp-log','Error: '+JSON.parse(e.data).message,'err');}catch{} setStatus('error', update_mode ? 'Update failed' : 'Export failed'); busy=false; es.close(); });
   es.onerror = () => { if(!busy)return; busy=false; setStatus('error','Connection lost'); es.close(); };
 }
 function clearExportResults() { document.getElementById('exp-progress-strip').classList.add('hidden'); document.getElementById('exp-results').classList.add('hidden'); document.getElementById('exp-empty').classList.remove('hidden'); document.getElementById('exp-clear-btn').classList.add('hidden'); }
@@ -2086,11 +2105,13 @@ function buildApTable(aps) {
     const radio2    = s.dot11g_radio_disable ? '<span style="color:var(--muted)">off</span>' : '<span style="color:var(--green)">on</span>';
     const radio5    = s.dot11a_radio_disable ? '<span style="color:var(--muted)">off</span>' : '<span style="color:var(--green)">on</span>';
     const hasSett   = !!ap.settings;
+    const site = ap.site ? `<span style="font-family:var(--mono);font-size:10px">${_escHtml(ap.site)}</span>` : '<span style="color:var(--muted)">—</span>';
     return `<tr>
       <td style="font-family:var(--mono);color:var(--text-hi)">${ap.serial}</td>
       <td>${hostname}</td>
       <td style="color:var(--muted)">${ap.model||'—'}</td>
       <td style="font-family:var(--mono);font-size:10px;color:var(--muted)">${ap.ip||'—'}</td>
+      <td>${site}</td>
       <td>${zone}</td>
       <td>${hasSett ? radio2+' / '+radio5 : '<span style="color:var(--muted)">—</span>'}</td>
     </tr>`;
@@ -2101,7 +2122,7 @@ function buildApTable(aps) {
       <span class="count-chip">${aps.length}</span>
     </div>
     <table class="wlan-table">
-      <thead><tr><th>Serial</th><th>Name / Hostname</th><th>Model</th><th>IP</th><th>Zone</th><th>2.4 / 5 GHz</th></tr></thead>
+      <thead><tr><th>Serial</th><th>Name / Hostname</th><th>Model</th><th>IP</th><th>Classic Central Site</th><th>Zone</th><th>2.4 / 5 GHz</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>
   </div>`;

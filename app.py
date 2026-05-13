@@ -493,6 +493,7 @@ def start_export():
     base_url = body.get("base_url", "").rstrip("/")
     token = body.get("token", "")
     selected = body.get("groups", [])
+    update_mode = bool(body.get("update_mode", False))
     if not base_url or not token:
         return jsonify({"ok": False, "error": "base_url and token required"}), 400
 
@@ -544,15 +545,36 @@ def start_export():
                     "files": files,
                 })
 
-            manifest = {
-                "_exported_at":    datetime.utcnow().isoformat() + "Z",
-                "_source_cluster": base_url,
-                "groups":          groups,
-            }
+            if update_mode:
+                old = _read_manifest() or {}
+                old_groups  = old.get("groups", [])
+                old_renames = old.get("renames", {})
+                # Updated groups first, then any old groups not in this run
+                updated_set  = set(groups)
+                merged = list(groups) + [g for g in old_groups if g not in updated_set]
+                manifest = {
+                    "_exported_at":    datetime.utcnow().isoformat() + "Z",
+                    "_source_cluster": base_url,
+                    "groups":          merged,
+                    "renames":         old_renames,
+                }
+                preserved = len(merged) - len(groups)
+            else:
+                manifest = {
+                    "_exported_at":    datetime.utcnow().isoformat() + "Z",
+                    "_source_cluster": base_url,
+                    "groups":          groups,
+                }
+                preserved = 0
+
             with open(os.path.join(EXPORT_DIR, "manifest.json"), "w") as f:
                 json.dump(manifest, f, indent=2)
 
-            _emit(q, "complete", {"total": len(groups)})
+            _emit(q, "complete", {
+                "total":       len(groups),
+                "preserved":   preserved,
+                "total_groups": len(manifest["groups"]),
+            })
         except Exception as e:
             _emit(q, "error", {"message": str(e)})
         finally:

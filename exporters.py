@@ -106,6 +106,7 @@ def export_ap_inventory(central, group_name: str, group_dir: str, **_):
             "name":   ap.get("name") or ap.get("hostname", ""),
             "model":  ap.get("model", ""),
             "ip":     ap.get("ip_address") or ap.get("ip", ""),
+            "site":   ap.get("site", ""),  # Classic Central site assignment — used for DR restore
         })
 
     _save(group_dir, "ap_inventory.json", inventory)
