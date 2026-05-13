@@ -17,6 +17,7 @@ from pycentral.classic.base import ArubaCentralBase
 from pycentral.classic.configuration import Groups
 from exporters import get_active_exporters
 from new_central_importer import get_existing_sites, import_group_to_site, import_device_groups, assign_aps_to_site, get_24ghz_ap515_serials, _normalize_ap_model
+from classic_restorer import get_classic_sites, validate_dr_target, restore_group as dr_restore_group
 
 app = Flask(__name__)
 CORS(app)
@@ -1663,6 +1664,101 @@ def delete_backup(filename):
         return jsonify({"ok": False, "error": "Backup not found"}), 404
     os.remove(path)
     return jsonify({"ok": True})
+
+
+@app.route("/api/dr/connect", methods=["POST"])
+def dr_connect():
+    """Validate Classic Central credentials and check which export groups/sites exist.
+
+    POST body: {base_url, token, groups: [name, ...]}
+    Returns:   {ok, validation: {groups, missing_groups, missing_sites}}
+    """
+    body     = request.json or {}
+    base_url = body.get("base_url", "").rstrip("/")
+    token    = body.get("token", "")
+    groups   = body.get("groups", [])
+
+    if not base_url or not token:
+        return jsonify({"ok": False, "error": "base_url and token required"}), 400
+
+    try:
+        conn           = _make_conn(base_url, token)
+        classic_groups = set(_get_all_groups(conn))
+        classic_sites  = get_classic_sites(conn)
+        validation     = validate_dr_target(EXPORT_DIR, groups, classic_groups, classic_sites)
+        return jsonify({"ok": True, "validation": validation})
+    except RuntimeError as e:
+        msg = str(e)
+        if "invalid or expired" in msg or "invalid_token" in msg:
+            return jsonify({"ok": False, "error": msg, "code": 401}), 401
+        if "Access denied" in msg:
+            return jsonify({"ok": False, "error": msg, "code": 403}), 403
+        return jsonify({"ok": False, "error": msg}), 500
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/dr/restore", methods=["POST"])
+def start_dr_restore():
+    """Move exported APs back to their Classic Central groups and sites.
+
+    POST body: {base_url, token, groups: [name, ...]}
+    Returns:   {ok, op_id}  — progress delivered via SSE on /api/dr/progress/<op_id>
+    """
+    body     = request.json or {}
+    base_url = body.get("base_url", "").rstrip("/")
+    token    = body.get("token", "")
+    groups   = body.get("groups", [])
+
+    if not base_url or not token or not groups:
+        return jsonify({"ok": False, "error": "base_url, token, and groups required"}), 400
+
+    op_id = f"dr_{int(time.time()*1000)}"
+    q: queue.Queue = queue.Queue()
+    _progress_queues[op_id] = q
+
+    def run():
+        try:
+            conn          = _make_conn(base_url, token)
+            classic_sites = get_classic_sites(conn)
+            _emit(q, "start", {"total": len(groups)})
+
+            ok_count   = 0
+            fail_count = 0
+
+            for group_name in groups:
+                group_dir = os.path.join(EXPORT_DIR, group_name)
+                result    = dr_restore_group(conn, group_name, group_dir, classic_sites)
+
+                if result["overall_ok"]:
+                    ok_count += 1
+                else:
+                    fail_count += 1
+
+                _emit(q, "group_done", result)
+                print(f"[dr] {group_name}: ok={result['overall_ok']}", flush=True)
+
+            _emit(q, "complete", {
+                "total":      len(groups),
+                "ok_count":   ok_count,
+                "fail_count": fail_count,
+            })
+        except Exception as e:
+            _emit(q, "error", {"message": str(e)})
+        finally:
+            q.put(None)
+
+    threading.Thread(target=run, daemon=True).start()
+    return jsonify({"ok": True, "op_id": op_id})
+
+
+@app.route("/api/dr/progress/<op_id>")
+def dr_progress(op_id):
+    return Response(
+        stream_with_context(_sse_stream(op_id)),
+        mimetype="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
+    )
 
 
 @app.route("/health")

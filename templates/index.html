@@ -511,6 +511,7 @@
       <button class="tab"        onclick="switchTab('import')">Import</button>
       <button class="tab"        onclick="switchTab('data')">Data</button>
       <button class="tab"        onclick="switchTab('backup')">Backup</button>
+      <button class="tab"        onclick="switchTab('dr')">DR</button>
     </div>
 
     <!-- Export sidebar -->
@@ -634,6 +635,44 @@
       <div class="browse-hint" id="data-browse-hint">Click a group to inspect</div>
       <div class="group-list" id="data-group-list">
         <div class="empty"><div class="empty-icon">⬡</div>No export on disk yet</div>
+      </div>
+    </div>
+
+    <!-- Disaster Recovery sidebar -->
+    <div id="sidebar-dr" style="display:none">
+      <div class="sidebar-section">
+        <div class="sidebar-label">Classic Central Credentials</div>
+        <div class="field">
+          <label>Base URL</label>
+          <input id="dr-url" type="url" placeholder="https://apigw-prod2.central..."
+                 oninput="saveSession('dr')" />
+        </div>
+        <div class="field">
+          <label>Access Token</label>
+          <input id="dr-token" type="password" placeholder="Bearer token"
+                 oninput="saveSession('dr')" />
+          <div class="field-hint">Admin role required to move APs and assign sites.</div>
+        </div>
+        <button class="btn btn-primary btn-block mt8" onclick="connectDR()">⟳ Connect &amp; Validate</button>
+        <div class="error-banner" id="dr-error-banner"></div>
+        <div class="session-bar" id="dr-session-bar">
+          <div class="session-dot"></div>
+          <span>Credentials saved for this session</span>
+          <button class="session-clear" onclick="clearSession('dr')" title="Clear saved credentials">✕</button>
+        </div>
+      </div>
+      <div class="select-bar hidden" id="dr-select-bar">
+        <span class="select-count" id="dr-select-count">0 selected</span>
+        <button class="btn btn-outline btn-sm" onclick="selectAllDr(true)">All</button>
+        <button class="btn btn-outline btn-sm" onclick="selectAllDr(false)">None</button>
+      </div>
+      <div class="group-list hidden" id="dr-group-list"></div>
+      <div class="sidebar-section" id="dr-run-section" style="display:none">
+        <button class="btn btn-primary btn-block" id="dr-run-btn" onclick="runDR()">↩ Restore to Classic Central</button>
+        <div class="field-hint" style="margin-top:8px">
+          Moves selected APs back to their original Classic Central groups and sites.<br>
+          Groups and sites must already exist — missing targets are flagged above.
+        </div>
       </div>
     </div>
 
@@ -829,6 +868,45 @@
       </div>
     </div>
 
+    <!-- Disaster Recovery panel -->
+    <div class="panel" id="panel-dr">
+      <div class="panel-header">
+        <div class="panel-title">Disaster Recovery — Restore to Classic Central</div>
+        <button class="btn btn-outline btn-sm hidden" id="dr-clear-btn" onclick="clearDRResults()">Clear</button>
+      </div>
+      <!-- Progress strip — stays fixed above the scrollable body -->
+      <div class="progress-strip hidden" id="dr-progress-strip">
+        <div class="progress-section">
+          <div class="progress-label"><span id="dr-prog-label">Ready</span><span id="dr-prog-pct">0%</span></div>
+          <div class="progress-bar"><div class="progress-fill" id="dr-prog-fill"></div></div>
+        </div>
+        <div class="stats">
+          <div class="stat ok">  <div class="stat-num" id="dr-n-ok">0</div>  <div class="stat-label">Restored</div></div>
+          <div class="stat fail"><div class="stat-num" id="dr-n-fail">0</div><div class="stat-label">Failed</div></div>
+        </div>
+      </div>
+      <div class="panel-body">
+        <div id="dr-empty">
+          <div class="empty">
+            <div class="empty-icon">⬡</div>
+            Connect to Classic Central to validate and restore exported groups.<br>
+            Requires a valid export on disk with site data and a Classic Central admin token.
+          </div>
+        </div>
+        <div class="hidden" id="dr-validation-section">
+          <div class="section-heading">Validation — Classic Central Target</div>
+          <div id="dr-validation-warnings"></div>
+          <div id="dr-validation-content"></div>
+        </div>
+        <div class="hidden" id="dr-results">
+          <div class="section-heading">Restore Results</div>
+          <div class="results-grid" id="dr-cards"></div>
+          <div class="section-heading mt16">Log</div>
+          <div class="log-terminal" id="dr-log"></div>
+        </div>
+      </div>
+    </div>
+
   </div>
 </main>
 
@@ -839,6 +917,12 @@
 
 <script>
 let expGroups = [], impGroups = [], dataGroups = [], dataGroupsFiltered = [];
+// Disaster Recovery state
+let drGroups     = [];          // group names from manifest
+let drSelected   = new Set();  // currently selected group names
+let drValidation = null;        // last validate_dr_target result from server
+let drOpId       = null;
+let drEvtSrc     = null;
 let expSelected = new Set(), impSelected = new Set();
 let activeDataGroup = null, activeImpGroup = null, busy = false;
 let impSortOrder = 'name';
@@ -867,6 +951,8 @@ const SS = {
   exp_token: 'cgm_exp_token',
   imp_url:   'cgm_imp_url',
   imp_token: 'cgm_imp_token',
+  dr_url:    'cgm_dr_url',
+  dr_token:  'cgm_dr_token',
 };
 
 function saveSession(prefix) {
@@ -895,7 +981,7 @@ function updateSessionBar(prefix) {
 }
 
 function restoreSession() {
-  for (const prefix of ['exp', 'imp']) {
+  for (const prefix of ['exp', 'imp', 'dr']) {
     const url   = sessionStorage.getItem(SS[`${prefix}_url`]);
     const token = sessionStorage.getItem(SS[`${prefix}_token`]);
     if (url)   document.getElementById(`${prefix}-url`).value   = url;
@@ -909,7 +995,7 @@ document.addEventListener('DOMContentLoaded', () => { restoreSession(); loadSamp
 
 // ── Tab switching ─────────────────────────────────────────────────────────
 function switchTab(tab) {
-  const tabs = ['export', 'import', 'data', 'backup'];
+  const tabs = ['export', 'import', 'data', 'backup', 'dr'];
   document.querySelectorAll('.tab').forEach((t, i) =>
     t.classList.toggle('active', tabs[i] === tab));
   document.getElementById('sidebar-export').style.display = tab === 'export' ? '' : 'none';
@@ -917,9 +1003,11 @@ function switchTab(tab) {
   const sd = document.getElementById('sidebar-data');
   sd.style.display = tab === 'data' ? 'flex' : 'none';
   document.getElementById('sidebar-backup').style.display = tab === 'backup' ? '' : 'none';
+  document.getElementById('sidebar-dr').style.display     = tab === 'dr'     ? '' : 'none';
   tabs.forEach(t => document.getElementById(`panel-${t}`).classList.toggle('active', t === tab));
-  if (tab === 'data') { loadSampleConfig(); loadDataBrowser(); }
+  if (tab === 'data')   { loadSampleConfig(); loadDataBrowser(); }
   if (tab === 'backup') loadBackups();
+  if (tab === 'dr')     loadDrExport();
 }
 
 function setStatus(state, msg) {
@@ -2688,6 +2776,325 @@ async function deleteBackup(filename) {
   } catch(e) {
     log('bk-log', `Delete failed: ${e.message}`, 'error');
   }
+}
+
+// ── Disaster Recovery ────────────────────────────────────────────────────────
+
+async function loadDrExport() {
+  // Auto-fill DR credentials from Export tab if the DR fields are still empty.
+  const drUrlEl   = document.getElementById('dr-url');
+  const drTokenEl = document.getElementById('dr-token');
+  if (!drUrlEl.value) {
+    const expUrl   = document.getElementById('exp-url').value;
+    const expToken = document.getElementById('exp-token').value;
+    if (expUrl)   drUrlEl.value   = expUrl;
+    if (expToken) drTokenEl.value = expToken;
+    if (expUrl || expToken) saveSession('dr');
+  }
+
+  const r = await fetch('/api/manifest').then(r => r.json()).catch(() => null);
+  if (!r || !r.ok || !r.groups || !r.groups.length) {
+    document.getElementById('dr-empty').innerHTML =
+      '<div class="empty"><div class="empty-icon">⬡</div>' +
+      'No export found on disk.<br>Run an export first, then return here to restore.</div>';
+    document.getElementById('dr-group-list').classList.add('hidden');
+    document.getElementById('dr-select-bar').classList.add('hidden');
+    document.getElementById('dr-run-section').style.display = 'none';
+    return;
+  }
+  drGroups   = r.groups.map(g => g.name);
+  drSelected = new Set(drGroups);
+  renderDrGroupList();
+}
+
+function renderDrGroupList() {
+  const list = document.getElementById('dr-group-list');
+  const bar  = document.getElementById('dr-select-bar');
+  if (!drGroups.length) return;
+
+  bar.classList.remove('hidden');
+  list.classList.remove('hidden');
+
+  list.innerHTML = drGroups.map(name => {
+    const info    = drValidation ? drValidation.groups[name] : null;
+    const checked = drSelected.has(name);
+    let badge = '';
+    if (info) {
+      if (!info.exists) {
+        badge = '<span class="type-badge" style="background:var(--red);color:#fff;font-size:9px;margin-left:4px" title="Group not found in Classic Central">missing</span>';
+      } else if (info.missing_sites && info.missing_sites.length) {
+        badge = '<span class="type-badge" style="background:var(--amber);color:#000;font-size:9px;margin-left:4px" title="Some sites not found in Classic Central">site warn</span>';
+      } else {
+        badge = '<span class="type-badge" style="background:var(--green);color:#000;font-size:9px;margin-left:4px">ready</span>';
+      }
+    }
+    const nameEsc = name.replace(/'/g, "\\'");
+    return `<div class="group-item${checked ? ' selected' : ''}" onclick="toggleDrGroup('${nameEsc}')">
+      <input type="checkbox" ${checked ? 'checked' : ''} onclick="event.stopPropagation();toggleDrGroup('${nameEsc}')">
+      <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${_escHtml(name)}">${_escHtml(name)}</span>
+      ${badge}
+    </div>`;
+  }).join('');
+
+  document.getElementById('dr-select-count').textContent = `${drSelected.size} selected`;
+}
+
+function toggleDrGroup(name) {
+  if (drSelected.has(name)) drSelected.delete(name);
+  else drSelected.add(name);
+  renderDrGroupList();
+  document.getElementById('dr-run-section').style.display = drSelected.size && drValidation ? '' : 'none';
+  document.getElementById('dr-select-count').textContent  = `${drSelected.size} selected`;
+}
+
+function selectAllDr(val) {
+  drSelected = val ? new Set(drGroups) : new Set();
+  renderDrGroupList();
+  document.getElementById('dr-run-section').style.display = val && drGroups.length && drValidation ? '' : 'none';
+}
+
+async function connectDR() {
+  const url   = document.getElementById('dr-url').value.trim();
+  const token = document.getElementById('dr-token').value.trim();
+  clearError('dr-error-banner');
+
+  if (!url || !token) {
+    showError('dr-error-banner', 'Enter a Base URL and Access Token before connecting.');
+    return;
+  }
+  if (!drGroups.length) {
+    showError('dr-error-banner', 'No export found on disk — run an export first.');
+    return;
+  }
+
+  setStatus('connecting', 'Connecting to Classic Central…');
+
+  try {
+    const r = await fetch('/api/dr/connect', {
+      method:  'POST',
+      headers: {'Content-Type': 'application/json'},
+      body:    JSON.stringify({base_url: url, token, groups: drGroups}),
+    }).then(r => r.json());
+
+    if (!r.ok) {
+      showError('dr-error-banner', r.error || 'Connection failed');
+      setStatus('', 'Connection failed');
+      return;
+    }
+
+    drValidation = r.validation;
+    clearError('dr-error-banner');
+    setStatus('connected', 'Classic Central validated');
+    renderDrGroupList();
+    renderDrValidation();
+
+    document.getElementById('dr-empty').classList.add('hidden');
+    document.getElementById('dr-validation-section').classList.remove('hidden');
+    document.getElementById('dr-run-section').style.display = drSelected.size ? '' : 'none';
+  } catch(e) {
+    showError('dr-error-banner', `Network error — ${e.message}`);
+    setStatus('', 'Connection failed');
+  }
+}
+
+function renderDrValidation() {
+  const v = drValidation;
+  if (!v) return;
+
+  const missingGroups = v.missing_groups || [];
+  const missingSites  = v.missing_sites  || [];
+  let warnings = '';
+
+  if (missingGroups.length) {
+    warnings += `<div class="error-banner" style="display:block;margin-bottom:10px">
+      <strong>Warning:</strong> ${missingGroups.length} group${missingGroups.length !== 1 ? 's' : ''} not found in Classic Central:
+      <span style="font-family:var(--mono)"> ${missingGroups.map(_escHtml).join(', ')}</span><br>
+      The group assignment step will fail for these — APs may end up in the default group.
+    </div>`;
+  }
+  if (missingSites.length) {
+    warnings += `<div class="error-banner" style="display:block;background:rgba(210,153,34,0.12);border-color:var(--amber);color:var(--amber);margin-bottom:10px">
+      <strong>Warning:</strong> ${missingSites.length} site${missingSites.length !== 1 ? 's' : ''} not found in Classic Central:
+      <span style="font-family:var(--mono)"> ${missingSites.map(_escHtml).join(', ')}</span><br>
+      APs assigned to these Classic Central sites cannot have their site restored.
+    </div>`;
+  }
+  if (!missingGroups.length && !missingSites.length) {
+    warnings = `<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:rgba(56,139,73,0.12);border:1px solid var(--green);border-radius:var(--radius);margin-bottom:12px;font-family:var(--mono);font-size:11px;color:var(--green)">
+      ✓ All groups and sites found in Classic Central — ready to restore.
+    </div>`;
+  }
+
+  document.getElementById('dr-validation-warnings').innerHTML = warnings;
+
+  const entries = Object.entries(v.groups || {});
+  let html = '';
+  for (const [name, info] of entries) {
+    const groupStatus = info.exists
+      ? `<span style="color:var(--green)">✓ Group found</span>`
+      : `<span style="color:var(--red)">✗ Group not found — APs will not be restored to this group</span>`;
+
+    let siteHtml = '';
+    if (info.sites && info.sites.length) {
+      siteHtml = info.sites.map(s => {
+        const missing = (info.missing_sites || []).includes(s);
+        return missing
+          ? `<span style="color:var(--amber);margin-right:8px" title="Site not found in Classic Central">⚠ ${_escHtml(s)}</span>`
+          : `<span style="color:var(--green);margin-right:8px">✓ ${_escHtml(s)}</span>`;
+      }).join('');
+    } else {
+      siteHtml = '<span style="color:var(--muted)">No Classic Central site assigned</span>';
+    }
+
+    html += `<div style="padding:10px 0;border-bottom:1px solid var(--border)">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:4px">
+        <span style="font-family:var(--mono);font-weight:600;color:var(--text-hi)">${_escHtml(name)}</span>
+        <span style="font-family:var(--mono);font-size:10px;color:var(--muted)">${info.ap_count} AP${info.ap_count !== 1 ? 's' : ''}</span>
+      </div>
+      <div style="font-family:var(--mono);font-size:10px;margin-bottom:3px">${groupStatus}</div>
+      <div style="font-family:var(--mono);font-size:10px">Classic Central Site: ${siteHtml}</div>
+    </div>`;
+  }
+
+  document.getElementById('dr-validation-content').innerHTML =
+    html || '<div style="color:var(--muted);font-size:12px;padding:12px 0">No groups to validate</div>';
+}
+
+async function runDR() {
+  if (!drSelected.size) return;
+  const url    = document.getElementById('dr-url').value.trim();
+  const token  = document.getElementById('dr-token').value.trim();
+  const groups = [...drSelected];
+
+  // Reset progress strip and results
+  document.getElementById('dr-n-ok').textContent    = '0';
+  document.getElementById('dr-n-fail').textContent  = '0';
+  document.getElementById('dr-prog-label').textContent = 'Starting…';
+  document.getElementById('dr-prog-pct').textContent   = '0%';
+  document.getElementById('dr-prog-fill').style.width  = '0%';
+  document.getElementById('dr-progress-strip').classList.remove('hidden');
+  document.getElementById('dr-results').classList.remove('hidden');
+  document.getElementById('dr-cards').innerHTML = '';
+  document.getElementById('dr-log').innerHTML   = '';
+  document.getElementById('dr-run-section').style.display = 'none';
+  document.getElementById('dr-clear-btn').classList.remove('hidden');
+
+  setStatus('working', `Restoring ${groups.length} group${groups.length !== 1 ? 's' : ''} to Classic Central…`);
+
+  let r;
+  try {
+    r = await fetch('/api/dr/restore', {
+      method:  'POST',
+      headers: {'Content-Type': 'application/json'},
+      body:    JSON.stringify({base_url: url, token, groups}),
+    }).then(r => r.json());
+  } catch(e) {
+    log('dr-log', `Error: ${e.message}`, 'error');
+    setStatus('', 'Restore failed to start');
+    return;
+  }
+
+  if (!r.ok) {
+    log('dr-log', `Error: ${r.error || 'Failed to start restore'}`, 'error');
+    setStatus('', 'Restore failed to start');
+    return;
+  }
+
+  drOpId = r.op_id;
+  if (drEvtSrc) drEvtSrc.close();
+  drEvtSrc = new EventSource(`/api/dr/progress/${drOpId}`);
+
+  let done = 0, total = groups.length, okCount = 0, failCount = 0;
+
+  drEvtSrc.addEventListener('start', e => {
+    const d = JSON.parse(e.data);
+    total = d.total || total;
+    log('dr-log', `Restore started — ${total} group${total !== 1 ? 's' : ''} queued`, 'info');
+  });
+
+  drEvtSrc.addEventListener('group_done', e => {
+    const d = JSON.parse(e.data);
+    done++;
+    if (d.overall_ok) okCount++; else failCount++;
+    document.getElementById('dr-n-ok').textContent   = okCount;
+    document.getElementById('dr-n-fail').textContent = failCount;
+    const pct = Math.round((done / total) * 100);
+    document.getElementById('dr-prog-fill').style.width = pct + '%';
+    document.getElementById('dr-prog-pct').textContent  = pct + '%';
+    document.getElementById('dr-prog-label').textContent = `Group ${done}/${total}: ${d.group}`;
+    _renderDrGroupResult(d);
+  });
+
+  drEvtSrc.addEventListener('complete', e => {
+    const d = JSON.parse(e.data);
+    document.getElementById('dr-prog-fill').style.width  = '100%';
+    document.getElementById('dr-prog-pct').textContent   = '100%';
+    document.getElementById('dr-prog-label').textContent = 'Complete';
+    const msg = `Done — ${d.ok_count} group${d.ok_count !== 1 ? 's' : ''} restored` +
+                (d.fail_count ? `, ${d.fail_count} failed` : '');
+    log('dr-log', msg, d.fail_count ? 'warn' : 'ok');
+    setStatus(d.fail_count ? '' : 'connected',
+      d.fail_count ? `Restore complete with ${d.fail_count} failure(s)` : `Restore complete — ${d.ok_count} groups restored`);
+    drEvtSrc.close();
+  });
+
+  drEvtSrc.addEventListener('error', e => {
+    try { const d = JSON.parse(e.data); log('dr-log', `Error: ${d.message}`, 'error'); }
+    catch(_) { log('dr-log', 'Stream error', 'error'); }
+    setStatus('', 'Restore failed');
+    drEvtSrc.close();
+  });
+
+  drEvtSrc.onerror = () => drEvtSrc.close();
+}
+
+function _renderDrGroupResult(d) {
+  const card = document.createElement('div');
+  card.className = 'result-card';
+
+  let detail = '';
+  if (d.ap_count === 0) {
+    detail = '<span style="font-family:var(--mono);font-size:10px;color:var(--muted)">No APs in export</span>';
+  } else {
+    const groupFailed = (d.group_failed || []).length;
+    const groupMoved  = d.ap_count - groupFailed;
+    detail += d.group_ok
+      ? `<span style="color:var(--green);font-family:var(--mono);font-size:10px">✓ ${groupMoved}/${d.ap_count} APs moved to group</span>`
+      : `<span style="color:var(--red);font-family:var(--mono);font-size:10px">✗ Group assignment failed — ${groupFailed} AP(s)</span>`;
+
+    for (const sr of (d.site_results || [])) {
+      const siteOk = sr.ok && !sr.error;
+      const siteTxt = sr.error
+        ? `<span style="color:var(--amber)">⚠ ${_escHtml(sr.site)}: ${_escHtml(sr.error)}</span>`
+        : siteOk
+          ? `<span style="color:var(--green)">✓ Classic Central Site "${_escHtml(sr.site)}": ${sr.ap_count} AP(s)</span>`
+          : `<span style="color:var(--red)">✗ Classic Central Site "${_escHtml(sr.site)}": ${(sr.failed||[]).length} failed</span>`;
+      detail += `<br><span style="font-family:var(--mono);font-size:10px;padding-left:10px">${siteTxt}</span>`;
+    }
+  }
+
+  const cls = d.overall_ok ? 'ok' : 'fail';
+  card.innerHTML = `
+    <div>
+      <div class="result-name">${_escHtml(d.group)}</div>
+      <div class="result-files">${detail}</div>
+    </div>
+    <div class="result-status ${cls}">${cls.toUpperCase()}</div>`;
+
+  document.getElementById('dr-cards').appendChild(card);
+  const failTxt = (d.group_failed||[]).length ? ` — ${d.group_failed.length} AP(s) not moved` : '';
+  log('dr-log', `${d.group}: ${d.overall_ok ? 'restored OK' : 'FAILED'}${failTxt}`,
+      d.overall_ok ? 'ok' : 'error');
+}
+
+function clearDRResults() {
+  document.getElementById('dr-progress-strip').classList.add('hidden');
+  document.getElementById('dr-results').classList.add('hidden');
+  document.getElementById('dr-cards').innerHTML = '';
+  document.getElementById('dr-log').innerHTML   = '';
+  document.getElementById('dr-clear-btn').classList.add('hidden');
+  document.getElementById('dr-run-section').style.display = drSelected.size && drValidation ? '' : 'none';
+  setStatus('', '');
 }
 
 </script>

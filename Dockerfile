@@ -30,6 +30,7 @@ WORKDIR /app
 COPY app.py                 .
 COPY exporters.py           .
 COPY new_central_importer.py .
+COPY classic_restorer.py    .
 COPY templates/             templates/
 
 # The exports directory is mounted as a volume at runtime.
