@@ -632,6 +632,10 @@
       <div class="search-bar">
         <input type="text" id="data-search" placeholder="Filter groups…" oninput="filterDataGroups()" />
       </div>
+      <div class="label-filter-bar hidden" id="data-label-filter-bar">
+        <div class="label-filter-header">Filter by label</div>
+        <div class="label-filter-chips" id="data-label-filter-chips"></div>
+      </div>
       <div class="browse-hint" id="data-browse-hint">Click a group to inspect</div>
       <div class="group-list" id="data-group-list">
         <div class="empty"><div class="empty-icon">⬡</div>No export on disk yet</div>
@@ -932,7 +936,8 @@ let impSortOrder = 'name';
 // Label state — shared across Import and Data tabs
 let allLabels      = [];   // ["Production", "Branch", ...]
 let labelAssignments = {}; // {"GroupA": ["Production"], ...}
-let impLabelFilter = new Set(); // active filter chips in Import sidebar
+let impLabelFilter  = new Set(); // active filter chips in Import sidebar
+let dataLabelFilter = new Set(); // active filter chips in Data sidebar
 // Site mapping state — Import tab
 let ncSites      = [];   // [{site_id, site_name}, ...] from New Central
 let siteMappings = {};   // {group_name: site_id} — current group→site assignments
@@ -2129,6 +2134,7 @@ async function loadDataBrowser() {
     document.getElementById('data-no-selection').classList.remove('hidden');
     document.getElementById('data-group-detail').classList.add('hidden');
     renderDataLabelManager();
+    renderDataLabelFilter();
     renderDataGroupList();
     setStatus('connected',`${dataGroups.length} groups on disk`);
   } catch(e) { setStatus('error',e.message); }
@@ -2136,7 +2142,11 @@ async function loadDataBrowser() {
 
 function filterDataGroups() {
   const q = document.getElementById('data-search').value.toLowerCase();
-  dataGroupsFiltered = q ? dataGroups.filter(g=>g.name.toLowerCase().includes(q)) : [...dataGroups];
+  dataGroupsFiltered = dataGroups.filter(g => {
+    if (q && !g.name.toLowerCase().includes(q)) return false;
+    if (dataLabelFilter.size && !(labelAssignments[g.name]||[]).some(l => dataLabelFilter.has(l))) return false;
+    return true;
+  });
   renderDataGroupList();
 }
 
@@ -2340,7 +2350,7 @@ async function createLabel() {
     const d = await fetch('/api/labels', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name})}).then(r=>r.json());
     if (!d.ok) { alert('Failed: '+d.error); return; }
     allLabels = d.definitions; input.value = '';
-    renderDataLabelManager(); renderDataGroupList(); renderImpLabelFilter();
+    renderDataLabelManager(); renderDataLabelFilter(); renderDataGroupList(); renderImpLabelFilter();
     if (activeDataGroup) selectDataGroup(activeDataGroup);
     setStatus('connected', `Label created: ${name}`);
   } catch(e) { alert(e.message); }
@@ -2350,8 +2360,9 @@ async function deleteLabel(name) {
   try {
     const d = await fetch(`/api/labels/${encodeURIComponent(name)}`,{method:'DELETE'}).then(r=>r.json());
     if (!d.ok) { alert('Failed: '+d.error); return; }
-    allLabels = d.definitions; labelAssignments = d.assignments; impLabelFilter.delete(name);
-    renderDataLabelManager(); renderDataGroupList(); renderImpLabelFilter(); renderImpGroups();
+    allLabels = d.definitions; labelAssignments = d.assignments;
+    impLabelFilter.delete(name); dataLabelFilter.delete(name);
+    renderDataLabelManager(); renderDataLabelFilter(); renderDataGroupList(); renderImpLabelFilter(); renderImpGroups();
     if (activeDataGroup) selectDataGroup(activeDataGroup);
     setStatus('connected', `Label deleted: ${name}`);
   } catch(e) { alert(e.message); }
@@ -2368,6 +2379,20 @@ async function toggleGroupLabel(groupName, label) {
     if (activeDataGroup === groupName) selectDataGroup(groupName);
   } catch(e) { alert(e.message); }
 }
+function renderDataLabelFilter() {
+  const bar   = document.getElementById('data-label-filter-bar');
+  const chips = document.getElementById('data-label-filter-chips');
+  if (!bar || !chips) return;
+  if (!allLabels.length) { bar.classList.add('hidden'); return; }
+  bar.classList.remove('hidden');
+  chips.innerHTML = allLabels.map(name => {
+    const s = labelStyle(name), active = dataLabelFilter.has(name);
+    return `<span class="label-filter-chip ${active?'active':''}" style="background:${active?s.bg:'transparent'};color:${s.color};border-color:${s.border}" onclick="toggleDataLabelFilter('${name}')">${name}</span>`;
+  }).join('') + (dataLabelFilter.size ? `<button class="label-filter-clear" onclick="clearDataLabelFilter()">✕ clear</button>` : '');
+}
+function toggleDataLabelFilter(label) { if(dataLabelFilter.has(label))dataLabelFilter.delete(label);else dataLabelFilter.add(label); renderDataLabelFilter(); filterDataGroups(); }
+function clearDataLabelFilter() { dataLabelFilter.clear(); renderDataLabelFilter(); filterDataGroups(); }
+
 function renderImpLabelFilter() {
   const bar=document.getElementById('imp-label-filter-bar'), chips=document.getElementById('imp-label-filter-chips');
   if (!allLabels.length) { bar.classList.add('hidden'); return; }
