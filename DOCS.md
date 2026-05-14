@@ -16,6 +16,7 @@
    - [Import tab](#import-tab)
    - [Data tab](#data-tab)
    - [Backup tab](#backup-tab)
+   - [Disaster Recovery (DR) tab](#disaster-recovery-dr-tab)
 8. [CLI Scripts Guide](#8-cli-scripts-guide)
 9. [Export File Format](#9-export-file-format)
 10. [New Central API Surface](#10-new-central-api-surface)
@@ -616,6 +617,86 @@ The Data and Import tabs immediately reflect the restored content.
 
 Click **✕ Delete** next to a backup. A confirmation prompt is shown.
 Deletion is permanent and cannot be undone.
+
+---
+
+### Disaster Recovery (DR) tab
+
+**Purpose:** Revert APs back to their original Classic Central groups and
+sites in the event of a failed or unwanted migration. This tab uses the
+exported data on disk as the source of truth for where each AP should be
+placed.
+
+> **Assumption:** The Classic Central groups and sites have not been
+> destroyed. Best practice is to leave Classic Central intact for days or
+> weeks after migration is confirmed before decommissioning it.
+
+#### Workflow overview
+
+| Step | Action | Effect on Classic Central |
+|------|--------|--------------------------|
+| 1 | Enter credentials, click **Connect & Validate** | **Read-only** — no changes made |
+| 2 | Review the validation report | — |
+| 3 | Select groups to restore, click **Restore to Classic Central** | APs are moved |
+
+#### Step 1 — Connect & Validate (read-only)
+
+Enter the Classic Central **Base URL** and **Access Token** in the sidebar.
+The credentials from the Export tab are pre-filled automatically — no
+re-entry is required if you have already connected on the Export tab.
+
+Click **Connect & Validate**. This call is **entirely read-only**:
+
+- Fetches the list of all groups in Classic Central (`GET /configuration/v2/groups`)
+- Fetches the list of all sites in Classic Central (`GET /central/v2/sites`)
+- Compares them against the exported data on disk
+
+No APs are moved, no configuration is changed, and no data is written to
+Classic Central at this stage.
+
+#### Step 2 — Review the validation report
+
+After connecting, the main panel displays a validation report for every
+exported group:
+
+| Indicator | Meaning |
+|-----------|---------|
+| **✓ Group found** | The Classic Central group exists and APs can be moved into it |
+| **✗ Group not found** | The group is missing — the group assignment step will fail for these APs |
+| **✓ Classic Central Site: `<name>`** | The site exists and AP site assignments can be restored |
+| **⚠ Classic Central Site: `<name>`** | The site is missing — AP site assignments cannot be restored |
+
+Warning banners appear at the top of the validation section if any groups
+or sites are absent. You can still proceed — missing targets are skipped
+and reported as failures in the results, without affecting APs assigned to
+groups and sites that do exist.
+
+#### Step 3 — Restore to Classic Central
+
+Select the groups to restore using the checkboxes in the sidebar (all
+groups are selected by default). Click **Restore to Classic Central**.
+
+For each selected group the tool:
+
+1. Calls `POST /configuration/v1/devices/move` to move all APs in the
+   export back to their original Classic Central group
+2. Calls `POST /central/v2/sites/associations` for each AP that has a
+   Classic Central site recorded in the export, re-assigning it to that site
+
+#### Progress and logging
+
+A progress bar and stat counters (Restored / Failed) are displayed above
+the scrollable log panel so you can monitor progress while viewing the
+detailed log. Each group logs:
+
+- Whether APs were successfully moved to the group
+- The result of each site assignment
+- A final OK or FAIL status per group
+
+#### Token requirements
+
+The access token must have **Admin** role in Classic Central. Read-only
+tokens are sufficient for Connect & Validate but will fail during Restore.
 
 ---
 

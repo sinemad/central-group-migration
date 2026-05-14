@@ -286,6 +286,41 @@ volumes:
 
 ---
 
+### Disaster Recovery (DR) tab
+
+Use this tab to revert APs back to their original Classic Central groups
+and sites if a migration needs to be rolled back.
+
+> **Assumption:** Classic Central groups and sites have not been destroyed.
+> Best practice is to leave them intact for days or weeks after confirming
+> the migration before decommissioning.
+
+**Connect & Validate** is read-only — it checks that every group and site
+from your export still exists in Classic Central. No APs are moved and no
+configuration is changed until you explicitly click **Restore to Classic
+Central**. The Classic Central credentials from the Export tab are
+pre-filled automatically.
+
+After validating, the main panel shows a report for each exported group:
+
+- **✓ Group found / ✗ Group not found** — whether the Classic Central group is present
+- **✓ / ⚠ Classic Central Site** — whether the AP's original site is present
+
+Warning banners highlight any missing groups or sites before you run the
+restore. Missing targets are skipped and reported as failures without
+affecting the APs that do restore successfully.
+
+**Restore to Classic Central** processes each selected group in sequence:
+
+1. Moves APs back to their original Classic Central group
+2. Re-assigns each AP to its original Classic Central site (if recorded in the export)
+
+A progress bar and log terminal show results in real time. Admin role is
+required on the token for the restore step; Connect & Validate works with
+a read-only token.
+
+---
+
 ## CLI scripts
 
 The CLI scripts share the same logic as the web UI and write to the same
