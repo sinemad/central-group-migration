@@ -6,8 +6,10 @@ Uses pycentral as the API layer, consistent with the rest of the project.
 import json
 import os
 import queue
+import re
 import threading
 import time
+import urllib.request
 from datetime import datetime
 
 from flask import Flask, Response, jsonify, render_template, request, stream_with_context
@@ -1664,6 +1666,162 @@ def delete_backup(filename):
         return jsonify({"ok": False, "error": "Backup not found"}), 404
     os.remove(path)
     return jsonify({"ok": True})
+
+
+# Domain-prefix → human-readable region label for live-fetched URLs.
+_CLASSIC_REGION = {
+    "app1-apigw":        "US-1",
+    "apigw-prod2":       "US-2",
+    "apigw-us-east-1":   "US-East-1",
+    "apigw-uswest4":     "US-West-4",
+    "apigw-uswest5":     "US-West-5",
+    "eu-apigw":          "EU-1",
+    "apigw-eucentral2":  "EU-Central-2",
+    "apigw-eucentral3":  "EU-Central-3",
+    "apigw-ca":          "Canada-1",
+    "api-ap":            "APAC-1",
+    "apigw-apaceast":    "APAC-East-1",
+    "apigw-apacsouth":   "APAC-South-1",
+    "apigw-uaenorth1":   "UAE",
+    "apigw":             "China",
+}
+_NEW_CENTRAL_REGION = {
+    "us1": "US-1",
+    "us2": "US-2",
+    "us4": "US-West-4",
+    "us5": "US-West-5",
+    "us6": "US-East-1",
+    "de1": "EU-1",
+    "de2": "EU-Central-2",
+    "de3": "EU-Central-3",
+    "gb1": "UK",
+    "ca1": "Canada-1",
+    "in1": "APAC-1",
+    "jp1": "APAC-East-1",
+    "au1": "APAC-South-1",
+    "ae1": "UAE",
+    "cn1": "China",
+}
+
+# Docs pages used to refresh the gateway URL lists at runtime.
+_CLASSIC_DOCS_URL = (
+    "https://developer.arubanetworks.com/central/docs/api-oauth-access-token"
+    "#table-domain-urls-for-api-gateway-access"
+)
+_NEW_CENTRAL_DOCS_URL = (
+    "https://developer.arubanetworks.com/new-central/docs/getting-started-with-rest-apis"
+)
+# Regex patterns for each URL format.
+_CLASSIC_DOMAIN_RE     = re.compile(r"\b((?:app1-apigw|apigw[\w-]*|eu-apigw|api-ap)"
+                                     r"\.central\.arubanetworks\.com(?:\.cn)?)\b")
+_NEW_CENTRAL_DOMAIN_RE = re.compile(r"\b([a-z0-9]+\.api\.central\.arubanetworks\.com"
+                                     r"(?:\.cn)?)\b")
+
+# Sourced from official Aruba developer docs — used when live fetch fails.
+_FALLBACK_GATEWAYS = [
+    # Classic Central
+    {"type": "classic", "label": "Classic Central — US-1",          "url": "https://app1-apigw.central.arubanetworks.com"},
+    {"type": "classic", "label": "Classic Central — US-2",          "url": "https://apigw-prod2.central.arubanetworks.com"},
+    {"type": "classic", "label": "Classic Central — US-East-1",     "url": "https://apigw-us-east-1.central.arubanetworks.com"},
+    {"type": "classic", "label": "Classic Central — US-West-4",     "url": "https://apigw-uswest4.central.arubanetworks.com"},
+    {"type": "classic", "label": "Classic Central — US-West-5",     "url": "https://apigw-uswest5.central.arubanetworks.com"},
+    {"type": "classic", "label": "Classic Central — EU-1",          "url": "https://eu-apigw.central.arubanetworks.com"},
+    {"type": "classic", "label": "Classic Central — EU-Central-2",  "url": "https://apigw-eucentral2.central.arubanetworks.com"},
+    {"type": "classic", "label": "Classic Central — EU-Central-3",  "url": "https://apigw-eucentral3.central.arubanetworks.com"},
+    {"type": "classic", "label": "Classic Central — Canada-1",      "url": "https://apigw-ca.central.arubanetworks.com"},
+    {"type": "classic", "label": "Classic Central — APAC-1",        "url": "https://api-ap.central.arubanetworks.com"},
+    {"type": "classic", "label": "Classic Central — APAC-East-1",   "url": "https://apigw-apaceast.central.arubanetworks.com"},
+    {"type": "classic", "label": "Classic Central — APAC-South-1",  "url": "https://apigw-apacsouth.central.arubanetworks.com"},
+    {"type": "classic", "label": "Classic Central — UAE",           "url": "https://apigw-uaenorth1.central.arubanetworks.com"},
+    {"type": "classic", "label": "Classic Central — China",         "url": "https://apigw.central.arubanetworks.com.cn"},
+    # New Central
+    {"type": "new", "label": "New Central — US-1",          "url": "https://us1.api.central.arubanetworks.com"},
+    {"type": "new", "label": "New Central — US-2",          "url": "https://us2.api.central.arubanetworks.com"},
+    {"type": "new", "label": "New Central — US-West-4",     "url": "https://us4.api.central.arubanetworks.com"},
+    {"type": "new", "label": "New Central — US-West-5",     "url": "https://us5.api.central.arubanetworks.com"},
+    {"type": "new", "label": "New Central — US-East-1",     "url": "https://us6.api.central.arubanetworks.com"},
+    {"type": "new", "label": "New Central — EU-1",          "url": "https://de1.api.central.arubanetworks.com"},
+    {"type": "new", "label": "New Central — EU-Central-2",  "url": "https://de2.api.central.arubanetworks.com"},
+    {"type": "new", "label": "New Central — EU-Central-3",  "url": "https://de3.api.central.arubanetworks.com"},
+    {"type": "new", "label": "New Central — UK",            "url": "https://gb1.api.central.arubanetworks.com"},
+    {"type": "new", "label": "New Central — Canada-1",      "url": "https://ca1.api.central.arubanetworks.com"},
+    {"type": "new", "label": "New Central — APAC-1",        "url": "https://in1.api.central.arubanetworks.com"},
+    {"type": "new", "label": "New Central — APAC-East-1",   "url": "https://jp1.api.central.arubanetworks.com"},
+    {"type": "new", "label": "New Central — APAC-South-1",  "url": "https://au1.api.central.arubanetworks.com"},
+    {"type": "new", "label": "New Central — UAE",           "url": "https://ae1.api.central.arubanetworks.com"},
+    {"type": "new", "label": "New Central — China",         "url": "https://cn1.api.central.arubanetworks.com.cn"},
+]
+_gateway_cache: dict = {}   # {"gateways": [...], "source": str, "fetched_at": float}
+
+
+def _fetch_page(url: str, timeout: int = 5) -> str | None:
+    """Fetch a URL and return the response body as a string, or None on failure."""
+    try:
+        req = urllib.request.Request(
+            url,
+            headers={"User-Agent": "Mozilla/5.0 (compatible; central-group-migration/1.0)"},
+        )
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return resp.read().decode("utf-8", errors="replace")
+    except Exception as exc:
+        print(f"[gateway-urls] Fetch failed for {url}: {exc}", flush=True)
+        return None
+
+
+@app.route("/api/gateway-urls")
+def get_gateway_urls():
+    """Return the combined Classic Central + New Central gateway URL list.
+
+    Attempts to refresh each list from the respective Aruba developer docs
+    page on the first call (or after the 1-hour cache expires).  Falls back
+    to the hardcoded list when a live fetch fails or returns no parseable URLs.
+    """
+    now = time.time()
+    if _gateway_cache and now - _gateway_cache.get("fetched_at", 0) < 3600:
+        return jsonify({"ok": True, **{k: v for k, v in _gateway_cache.items()
+                                       if k != "fetched_at"}})
+
+    gateways: list[dict] = []
+
+    # --- Classic Central ---
+    classic_html = _fetch_page(_CLASSIC_DOCS_URL)
+    if classic_html:
+        domains = list(dict.fromkeys(_CLASSIC_DOMAIN_RE.findall(classic_html)))
+        domains = [d for d in domains if not d.startswith("internal.")]
+        if domains:
+            gateways += [{"type": "classic",
+                           "label": f"Classic Central — {_CLASSIC_REGION.get(d.split('.')[0], d.split('.')[0])}",
+                           "url":   f"https://{d}"} for d in domains]
+            print(f"[gateway-urls] Classic Central: {len(domains)} clusters from docs",
+                  flush=True)
+
+    if not any(g["type"] == "classic" for g in gateways):
+        classic_fallback = [g for g in _FALLBACK_GATEWAYS if g["type"] == "classic"]
+        gateways += classic_fallback
+        print(f"[gateway-urls] Classic Central: using fallback ({len(classic_fallback)} clusters)",
+              flush=True)
+
+    # --- New Central ---
+    nc_html = _fetch_page(_NEW_CENTRAL_DOCS_URL)
+    if nc_html:
+        domains = list(dict.fromkeys(_NEW_CENTRAL_DOMAIN_RE.findall(nc_html)))
+        domains = [d for d in domains if not d.startswith("internal.")]
+        if domains:
+            gateways += [{"type": "new",
+                           "label": f"New Central — {_NEW_CENTRAL_REGION.get(d.split('.')[0], d.split('.')[0].upper())}",
+                           "url":   f"https://{d}"} for d in domains]
+            print(f"[gateway-urls] New Central: {len(domains)} clusters from docs",
+                  flush=True)
+
+    if not any(g["type"] == "new" for g in gateways):
+        nc_fallback = [g for g in _FALLBACK_GATEWAYS if g["type"] == "new"]
+        gateways += nc_fallback
+        print(f"[gateway-urls] New Central: using fallback ({len(nc_fallback)} clusters)",
+              flush=True)
+
+    source = "live" if (nc_html or classic_html) else "fallback"
+    _gateway_cache.update({"gateways": gateways, "source": source, "fetched_at": now})
+    return jsonify({"ok": True, "gateways": gateways, "source": source})
 
 
 @app.route("/api/dr/connect", methods=["POST"])

@@ -520,7 +520,7 @@
         <div class="sidebar-label">Source Cluster</div>
         <div class="field">
           <label>Base URL</label>
-          <input id="exp-url" type="url" placeholder="https://apigw-prod2.central..."
+          <input id="exp-url" type="url" list="central-gw-urls" placeholder="https://apigw-prod2.central..."
                  oninput="saveSession('exp')" />
         </div>
         <div class="field">
@@ -562,7 +562,7 @@
         <div class="sidebar-label">New Central Instance</div>
         <div class="field">
           <label>Base URL</label>
-          <input id="imp-url" type="url" placeholder="https://apigw-prod2.central..."
+          <input id="imp-url" type="url" list="central-gw-urls" placeholder="https://apigw-prod2.central..."
                  oninput="saveSession('imp')" />
         </div>
         <div class="field">
@@ -648,7 +648,7 @@
         <div class="sidebar-label">Classic Central Credentials</div>
         <div class="field">
           <label>Base URL</label>
-          <input id="dr-url" type="url" placeholder="https://apigw-prod2.central..."
+          <input id="dr-url" type="url" list="central-gw-urls" placeholder="https://apigw-prod2.central..."
                  oninput="saveSession('dr')" />
         </div>
         <div class="field">
@@ -999,7 +999,7 @@ function restoreSession() {
 }
 
 // Restore on load
-document.addEventListener('DOMContentLoaded', () => { restoreSession(); loadSampleConfig(); });
+document.addEventListener('DOMContentLoaded', () => { restoreSession(); loadSampleConfig(); loadGatewayUrls(); });
 
 // ── Tab switching ─────────────────────────────────────────────────────────
 function switchTab(tab) {
@@ -2806,6 +2806,29 @@ async function deleteBackup(filename) {
   }
 }
 
+// ── Gateway URL list ─────────────────────────────────────────────────────────
+// Fetches the current Aruba Central API gateway list from the backend on page
+// load.  The backend attempts to pull the live list from the Aruba developer
+// docs and falls back to the hardcoded list if the fetch fails.
+async function loadGatewayUrls() {
+  try {
+    const r = await fetch('/api/gateway-urls').then(r => r.json());
+    if (!r.ok || !r.gateways || !r.gateways.length) return;
+    const dl = document.getElementById('central-gw-urls');
+    if (!dl) return;
+    dl.innerHTML = r.gateways
+      .map(g => `<option value="${g.url}">${_escHtml(g.label)}</option>`)
+      .join('');
+    if (r.source === 'live') {
+      console.log(`[central-migration] Gateway URLs refreshed from Aruba docs (${r.gateways.length} clusters)`);
+    } else {
+      console.log(`[central-migration] Using built-in gateway URL list (${r.gateways.length} clusters)`);
+    }
+  } catch(_) {
+    // Silent — hardcoded <datalist> options remain as the ultimate fallback
+  }
+}
+
 // ── Disaster Recovery ────────────────────────────────────────────────────────
 
 async function loadDrExport() {
@@ -3126,5 +3149,41 @@ function clearDRResults() {
 }
 
 </script>
+
+<!-- Shared datalist of known Aruba Central API gateway URLs.
+     Referenced by the Base URL inputs on the Export, Import, and DR tabs. -->
+<datalist id="central-gw-urls">
+  <!-- Classic Central -->
+  <option value="https://app1-apigw.central.arubanetworks.com">Classic Central — US-1</option>
+  <option value="https://apigw-prod2.central.arubanetworks.com">Classic Central — US-2</option>
+  <option value="https://apigw-us-east-1.central.arubanetworks.com">Classic Central — US-East-1</option>
+  <option value="https://apigw-uswest4.central.arubanetworks.com">Classic Central — US-West-4</option>
+  <option value="https://apigw-uswest5.central.arubanetworks.com">Classic Central — US-West-5</option>
+  <option value="https://eu-apigw.central.arubanetworks.com">Classic Central — EU-1</option>
+  <option value="https://apigw-eucentral2.central.arubanetworks.com">Classic Central — EU-Central-2</option>
+  <option value="https://apigw-eucentral3.central.arubanetworks.com">Classic Central — EU-Central-3</option>
+  <option value="https://apigw-ca.central.arubanetworks.com">Classic Central — Canada-1</option>
+  <option value="https://api-ap.central.arubanetworks.com">Classic Central — APAC-1</option>
+  <option value="https://apigw-apaceast.central.arubanetworks.com">Classic Central — APAC-East-1</option>
+  <option value="https://apigw-apacsouth.central.arubanetworks.com">Classic Central — APAC-South-1</option>
+  <option value="https://apigw-uaenorth1.central.arubanetworks.com">Classic Central — UAE</option>
+  <option value="https://apigw.central.arubanetworks.com.cn">Classic Central — China</option>
+  <!-- New Central -->
+  <option value="https://us1.api.central.arubanetworks.com">New Central — US-1</option>
+  <option value="https://us2.api.central.arubanetworks.com">New Central — US-2</option>
+  <option value="https://us4.api.central.arubanetworks.com">New Central — US-West-4</option>
+  <option value="https://us5.api.central.arubanetworks.com">New Central — US-West-5</option>
+  <option value="https://us6.api.central.arubanetworks.com">New Central — US-East-1</option>
+  <option value="https://de1.api.central.arubanetworks.com">New Central — EU-1</option>
+  <option value="https://de2.api.central.arubanetworks.com">New Central — EU-Central-2</option>
+  <option value="https://de3.api.central.arubanetworks.com">New Central — EU-Central-3</option>
+  <option value="https://gb1.api.central.arubanetworks.com">New Central — UK</option>
+  <option value="https://ca1.api.central.arubanetworks.com">New Central — Canada-1</option>
+  <option value="https://in1.api.central.arubanetworks.com">New Central — APAC-1</option>
+  <option value="https://jp1.api.central.arubanetworks.com">New Central — APAC-East-1</option>
+  <option value="https://au1.api.central.arubanetworks.com">New Central — APAC-South-1</option>
+  <option value="https://ae1.api.central.arubanetworks.com">New Central — UAE</option>
+  <option value="https://cn1.api.central.arubanetworks.com.cn">New Central — China</option>
+</datalist>
 </body>
 </html>
