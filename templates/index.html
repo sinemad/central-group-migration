@@ -6,6 +6,10 @@
 <title>Central Group Migration</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script>
+  /* Apply saved theme before CSS renders to prevent flash */
+  (function(){ var t=localStorage.getItem('cgm_theme'); if(t) document.documentElement.setAttribute('data-theme',t); })();
+</script>
 <style>
   :root {
     --bg:        #ffffff;
@@ -26,6 +30,49 @@
     --radius:    4px;
     --transition: 180ms ease;
   }
+  /* ── Dark theme ─────────────────────────────────────────────────────── */
+  [data-theme="dark"] {
+    --bg:        #0d1117;
+    --surface:   #161b22;
+    --surface2:  #21262d;
+    --border:    #30363d;
+    --amber:     #58a6ff;
+    --amber-dim: #388bfd;
+    --green:     #3fb950;
+    --red:       #f85149;
+    --blue:      #58a6ff;
+    --purple:    #bc8cff;
+    --muted:     #8b949e;
+    --text:      #c9d1d9;
+    --text-hi:   #e6edf3;
+  }
+  /* System preference fallback — only when no explicit choice saved */
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme]) {
+      --bg:        #0d1117;
+      --surface:   #161b22;
+      --surface2:  #21262d;
+      --border:    #30363d;
+      --amber:     #58a6ff;
+      --amber-dim: #388bfd;
+      --green:     #3fb950;
+      --red:       #f85149;
+      --blue:      #58a6ff;
+      --purple:    #bc8cff;
+      --muted:     #8b949e;
+      --text:      #c9d1d9;
+      --text-hi:   #e6edf3;
+    }
+  }
+  /* ── Theme toggle button ─────────────────────────────────────────────── */
+  .theme-toggle {
+    margin-left: auto; background: none; border: 1px solid var(--border);
+    border-radius: var(--radius); color: var(--muted); cursor: pointer;
+    font-family: var(--mono); font-size: 10px; text-transform: uppercase;
+    letter-spacing: 0.08em; padding: 4px 10px; display: flex; align-items: center;
+    gap: 6px; transition: all var(--transition); white-space: nowrap;
+  }
+  .theme-toggle:hover { color: var(--text); border-color: var(--amber); }
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   body {
     background: var(--bg); color: var(--text); font-family: var(--sans);
@@ -509,6 +556,7 @@
 <header>
   <div class="logo">Central</div>
   <div class="header-badge">Group Migration</div>
+  <button class="theme-toggle" id="theme-toggle" onclick="toggleTheme()" title="Toggle light / dark mode"></button>
 </header>
 
 <main>
@@ -518,10 +566,9 @@
     <button class="tab"        onclick="switchTab('data')"><span class="step-num">2</span>Data</button>
     <span class="tab-arrow">›</span>
     <button class="tab"        onclick="switchTab('import')"><span class="step-num">3</span>Import</button>
-    <span class="tab-arrow">›</span>
-    <button class="tab"        onclick="switchTab('dr')"><span class="step-num">4</span>Disaster Recovery</button>
     <div class="tab-utility-sep"></div>
     <button class="tab utility-tab" onclick="switchTab('backup')">Backup</button>
+    <button class="tab utility-tab" onclick="switchTab('dr')">Disaster Recovery</button>
   </nav>
   <aside>
 
@@ -934,6 +981,26 @@
 </footer>
 
 <script>
+/* ── Theme ──────────────────────────────────────────────────────────── */
+function _isDark() {
+  const t = document.documentElement.getAttribute('data-theme');
+  if (t === 'dark') return true;
+  if (t === 'light') return false;
+  return window.matchMedia('(prefers-color-scheme: dark)').matches;
+}
+function updateThemeIcon() {
+  const btn = document.getElementById('theme-toggle');
+  if (!btn) return;
+  btn.textContent = _isDark() ? '☀ Light' : '☾ Dark';
+}
+function toggleTheme() {
+  const next = _isDark() ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', next);
+  localStorage.setItem('cgm_theme', next);
+  updateThemeIcon();
+}
+/* ── End theme ──────────────────────────────────────────────────────── */
+
 let expGroups = [], impGroups = [], dataGroups = [], dataGroupsFiltered = [];
 // Disaster Recovery state
 let drGroups     = [];          // group names from manifest
@@ -1010,11 +1077,11 @@ function restoreSession() {
 }
 
 // Restore on load
-document.addEventListener('DOMContentLoaded', () => { restoreSession(); loadSampleConfig(); loadGatewayUrls(); });
+document.addEventListener('DOMContentLoaded', () => { restoreSession(); loadSampleConfig(); loadGatewayUrls(); updateThemeIcon(); });
 
 // ── Tab switching ─────────────────────────────────────────────────────────
 function switchTab(tab) {
-  const tabs = ['export', 'data', 'import', 'dr', 'backup'];
+  const tabs = ['export', 'data', 'import', 'backup', 'dr'];
   document.querySelectorAll('.tab').forEach((t, i) =>
     t.classList.toggle('active', tabs[i] === tab));
   document.getElementById('sidebar-export').style.display = tab === 'export' ? '' : 'none';
