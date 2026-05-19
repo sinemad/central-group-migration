@@ -39,14 +39,21 @@
   .logo { font-family: var(--mono); font-size: 13px; font-weight: 600; color: var(--amber); letter-spacing: 0.08em; text-transform: uppercase; }
   .logo span { color: var(--muted); font-weight: 400; }
   .header-badge { font-family: var(--mono); font-size: 10px; padding: 2px 8px; border: 1px solid var(--amber-dim); color: var(--amber); border-radius: 2px; text-transform: uppercase; letter-spacing: 0.1em; }
-  main { display: grid; grid-template-columns: 280px 1fr; max-height: calc(100vh - 56px - 36px); overflow: hidden; }
-  aside { border-right: 1px solid var(--border); background: var(--surface); overflow-y: auto; display: flex; flex-direction: column; }
+  main { display: grid; grid-template-columns: 280px 1fr; grid-template-rows: auto 1fr; grid-template-areas: "nav nav" "aside content"; max-height: calc(100vh - 56px - 36px); overflow: hidden; }
+  .workflow-nav { grid-area: nav; display: flex; align-items: stretch; border-bottom: 1px solid var(--border); background: var(--surface2); }
+  aside { grid-area: aside; border-right: 1px solid var(--border); background: var(--surface); overflow-y: auto; display: flex; flex-direction: column; }
+  .content { grid-area: content; }
   .sidebar-section { padding: 20px; border-bottom: 1px solid var(--border); }
   .sidebar-label { font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--muted); margin-bottom: 14px; }
-  .tabs { display: flex; border-bottom: 1px solid var(--border); }
-  .tab { flex: 1; padding: 14px 0; font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; text-align: center; cursor: pointer; color: var(--muted); border-bottom: 2px solid transparent; transition: color var(--transition), border-color var(--transition); background: none; border-top: none; border-left: none; border-right: none; }
-  .tab:hover { color: var(--text); }
-  .tab.active { color: var(--amber); border-bottom-color: var(--amber); }
+  .tab { flex: none; padding: 0 24px; height: 44px; font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; cursor: pointer; color: var(--muted); border-bottom: 2px solid transparent; transition: color var(--transition), border-color var(--transition), background var(--transition); background: none; border-top: none; border-left: none; border-right: none; display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+  .tab:hover { color: var(--text); background: rgba(255,255,255,0.03); }
+  .tab.active { color: var(--amber); border-bottom-color: var(--amber); background: rgba(210,153,34,0.06); }
+  .tab.active .step-num { background: var(--amber); color: var(--bg); border-color: var(--amber); }
+  .step-num { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%; border: 1.5px solid var(--muted); font-size: 9px; font-weight: 700; flex-shrink: 0; transition: background var(--transition), border-color var(--transition), color var(--transition); line-height: 1; }
+  .tab-arrow { color: var(--border); font-size: 18px; display: flex; align-items: center; pointer-events: none; flex-shrink: 0; }
+  .tab-utility-sep { flex: 1; }
+  .tab.utility-tab { border-left: 1px solid var(--border); padding: 0 20px; font-size: 10px; color: var(--muted); opacity: 0.75; }
+  .tab.utility-tab:hover { opacity: 1; }
   .field { margin-bottom: 12px; }
   label { display: block; font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); margin-bottom: 5px; }
   input[type="text"], input[type="password"], input[type="url"] { width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text-hi); font-family: var(--mono); font-size: 12px; padding: 7px 10px; outline: none; transition: border-color var(--transition); }
@@ -505,14 +512,18 @@
 </header>
 
 <main>
+  <nav class="workflow-nav">
+    <button class="tab active" onclick="switchTab('export')"><span class="step-num">1</span>Export</button>
+    <span class="tab-arrow">›</span>
+    <button class="tab"        onclick="switchTab('data')"><span class="step-num">2</span>Data</button>
+    <span class="tab-arrow">›</span>
+    <button class="tab"        onclick="switchTab('import')"><span class="step-num">3</span>Import</button>
+    <span class="tab-arrow">›</span>
+    <button class="tab"        onclick="switchTab('dr')"><span class="step-num">4</span>Disaster Recovery</button>
+    <div class="tab-utility-sep"></div>
+    <button class="tab utility-tab" onclick="switchTab('backup')">Backup</button>
+  </nav>
   <aside>
-    <div class="tabs">
-      <button class="tab active" onclick="switchTab('export')">Export</button>
-      <button class="tab"        onclick="switchTab('import')">Import</button>
-      <button class="tab"        onclick="switchTab('data')">Data</button>
-      <button class="tab"        onclick="switchTab('backup')">Backup</button>
-      <button class="tab"        onclick="switchTab('dr')">DR</button>
-    </div>
 
     <!-- Export sidebar -->
     <div id="sidebar-export">
@@ -1003,7 +1014,7 @@ document.addEventListener('DOMContentLoaded', () => { restoreSession(); loadSamp
 
 // ── Tab switching ─────────────────────────────────────────────────────────
 function switchTab(tab) {
-  const tabs = ['export', 'import', 'data', 'backup', 'dr'];
+  const tabs = ['export', 'data', 'import', 'dr', 'backup'];
   document.querySelectorAll('.tab').forEach((t, i) =>
     t.classList.toggle('active', tabs[i] === tab));
   document.getElementById('sidebar-export').style.display = tab === 'export' ? '' : 'none';
