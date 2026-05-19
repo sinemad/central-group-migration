@@ -113,7 +113,7 @@
   .btn-outline { background: transparent; border-color: var(--border); color: var(--text); }
   .btn-outline:not(:disabled):hover { border-color: var(--amber); color: var(--amber); }
   .btn-sm { padding: 4px 10px; font-size: 10px; }
-  .btn-block { width: 100%; justify-content: center; }
+  .btn-block { width: 100%; justify-content: center; white-space: normal; text-align: center; line-height: 1.4; letter-spacing: 0.06em; }
   .group-list { flex: 1; overflow-y: auto; }
   .group-item { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 9px 20px; cursor: pointer; transition: background var(--transition); }
   .group-label-chips { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 4px; padding: 0 0 4px 2px; }
@@ -629,7 +629,7 @@
                  oninput="saveSession('imp')" />
           <div class="field-hint">New Central target token. Must have Admin role.</div>
         </div>
-        <button class="btn btn-primary btn-block mt8" onclick="connectNC()">⟳ Connect to New Central</button>
+        <button class="btn btn-primary btn-block mt8" onclick="connectNC()">⟳ Connect to Destination Central</button>
         <div class="error-banner" id="imp-nc-error-banner"></div>
         <div class="nc-connected-bar" id="imp-nc-status">
           <div class="nc-dot"></div>
