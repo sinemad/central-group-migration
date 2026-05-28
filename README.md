@@ -1,7 +1,7 @@
 # HPE Aruba Central Group Migration Tool
 
-Migrate access point configuration from **Classic Central** (UI groups) to
-**New Central** (sites and device groups). Provides a web UI, CLI scripts,
+Migrate access point configuration from a **Classic Central instance** (UI groups) to a
+**New Central instance** (sites and device groups). Provides a web UI, CLI scripts,
 and a Docker container.
 
 > **Scope:** AOS10 UI groups in Classic Central. Template groups and
