@@ -359,11 +359,13 @@ docker compose down
 The `exports/` directory is bind-mounted from the host — data persists
 across restarts and rebuilds.
 
-To change the host port, edit `docker-compose.yml`:
-```yaml
-ports:
-  - "9090:8000"   # change 9090 to any available host port
+To change the host port, set `HOST_PORT` in `.env` (gitignored — safe for local overrides):
+```bash
+# .env
+HOST_PORT=9090
 ```
+Then restart: `docker compose up -d`. No edits to `docker-compose.yml` needed.
+Copy `.env.example` to `.env` as a starting point if the file doesn't exist yet.
 
 ---
 

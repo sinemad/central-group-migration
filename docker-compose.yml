@@ -6,7 +6,7 @@ services:
     image: central-group-migration:latest
     container_name: central-migration
     ports:
-      - "8000:8000"
+      - "${HOST_PORT:-8000}:8000"
     volumes:
       # Persist exported group data across container restarts/upgrades.
       # Bind-mount a local directory so exports are accessible on the host
