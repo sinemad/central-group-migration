@@ -356,10 +356,46 @@ docker compose logs -f
 docker compose down
 ```
 
-The `exports/` directory is bind-mounted from the host — data persists
-across restarts and rebuilds.
+Data persists across restarts and rebuilds.
 
-To change the host port, set `HOST_PORT` in `.env` (gitignored — safe for local overrides):
+### Export and backup directories
+
+By default, exports and backups are stored in `exports/` and `backups/`
+alongside the project directory — this works on all platforms with no
+configuration required.
+
+| Platform | What to do |
+|----------|-----------|
+| **macOS** (Docker Desktop) | Nothing — Docker Desktop handles bind-mount permissions automatically. |
+| **Windows** (Docker Desktop) | Nothing — same as macOS. |
+| **Linux workstation** | Works out of the box with the default `./exports` path. |
+| **Linux remote server** | Set `EXPORT_HOME` and `PUID`/`PGID` in `.env` (see below). |
+
+#### Redirecting exports to your home directory (Linux remote server)
+
+When the project lives in a system directory (e.g. `/opt/`) it can be more
+convenient to store exported data in your home directory. Set these in `.env`:
+
+```bash
+# .env — Linux remote server example
+EXPORT_HOME=/home/dan      # host path used as the volume root
+PUID=1000                  # match `id` output on the host
+PGID=1000
+```
+
+Exports land at `$EXPORT_HOME/central-exports/` and backups at
+`$EXPORT_HOME/central-backups/` on the host. `PUID`/`PGID` remap the
+container user to match the owner of that directory, preventing **Permission
+denied** errors.
+
+> **sudo caveat** — Running `docker compose` under `sudo` changes `$HOME` to
+> `/root`. If you use sudo, either run `sudo -E docker compose up -d` (which
+> preserves your environment) or set `EXPORT_HOME` explicitly in `.env` so the
+> path does not depend on `$HOME`.
+
+### Changing the host port
+
+Set `HOST_PORT` in `.env`:
 ```bash
 # .env
 HOST_PORT=9090
