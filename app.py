@@ -20,6 +20,11 @@ from pycentral.classic.configuration import Groups
 from exporters import get_active_exporters
 from new_central_importer import get_existing_sites, import_group_to_site, import_device_groups, assign_aps_to_site, get_24ghz_ap515_serials, _normalize_ap_model
 from classic_restorer import get_classic_sites, validate_dr_target, restore_group as dr_restore_group
+from classic_importer import (
+    get_classic_groups as _cc_get_groups,
+    get_classic_sites  as _cc_get_sites,
+    import_group       as cc_import_group,
+)
 
 app = Flask(__name__)
 CORS(app)
@@ -1946,6 +1951,134 @@ def dr_progress(op_id):
         stream_with_context(_sse_stream(op_id)),
         mimetype="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
+    )
+
+
+# ---------------------------------------------------------------------------
+# Classic Central import
+# ---------------------------------------------------------------------------
+
+@app.route("/api/import/classic-central/connect", methods=["POST"])
+def cc_import_connect():
+    """Connect to a Classic Central target and return its groups and sites."""
+    data  = request.get_json() or {}
+    url   = (data.get("base_url") or "").strip()
+    token = (data.get("token")    or "").strip()
+    if not url or not token:
+        return jsonify({"ok": False, "error": "base_url and token are required"}), 400
+    try:
+        conn   = _make_conn(url, token)
+        groups = _cc_get_groups(conn)
+        sites  = _cc_get_sites(conn)
+        return jsonify({"ok": True, "groups": groups, "sites": list(sites.keys())})
+    except Exception as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+
+
+@app.route("/api/import/classic-central", methods=["POST"])
+def cc_import_start():
+    """Start a Classic Central import job. Returns {ok, op_id}.
+
+    Body
+    ----
+    {
+      "base_url":     str,
+      "token":        str,
+      "mappings": [
+        {
+          "export_group":  str,          // source group name from export
+          "target_group":  str,          // target Classic Central group name
+          "site_mapping":  {src: tgt},   // source site name → target site name
+          "serials":       [str],        // selected AP serials (omit = all)
+        }, ...
+      ],
+      "verbose": bool
+    }
+    """
+    data     = request.get_json() or {}
+    url      = (data.get("base_url") or "").strip()
+    token    = (data.get("token")    or "").strip()
+    mappings = data.get("mappings",  [])
+    verbose  = bool(data.get("verbose", False))
+
+    if not url or not token:
+        return jsonify({"ok": False, "error": "base_url and token are required"}), 400
+    if not mappings:
+        return jsonify({"ok": False, "error": "No group mappings provided"}), 400
+
+    op_id = f"cc_import_{int(time.time() * 1000)}"
+    q     = queue.Queue()
+    _progress_queues[op_id] = q
+
+    def _run():
+        def emit(msg_type, payload):
+            q.put({"type": msg_type, **payload})
+
+        try:
+            conn         = _make_conn(url, token)
+            classic_sites = _cc_get_sites(conn)
+
+            total  = len(mappings)
+            done   = 0
+            n_ok   = 0
+            n_fail = 0
+
+            emit("start", {"total": total})
+
+            for m in mappings:
+                export_group  = m.get("export_group", "")
+                target_group  = m.get("target_group", "")
+                site_mapping  = m.get("site_mapping", {})
+                sel_serials   = set(m["serials"]) if m.get("serials") is not None else None
+                group_dir     = os.path.join(EXPORT_DIR, export_group)
+
+                if verbose:
+                    emit("log", {"msg": f"Importing '{export_group}' → '{target_group}'"})
+
+                result = cc_import_group(
+                    conn, export_group, target_group, group_dir,
+                    site_mapping, classic_sites, sel_serials
+                )
+
+                done += 1
+                if result["overall_ok"]:
+                    n_ok += 1
+                else:
+                    n_fail += 1
+
+                emit("result", {
+                    "group":  export_group,
+                    "result": result,
+                    "done":   done,
+                    "total":  total,
+                })
+
+                if verbose:
+                    if result["group_failed"]:
+                        emit("log", {"msg": f"  Group move failed for: {result['group_failed']}"})
+                    for sr in result["site_results"]:
+                        status = "✓" if sr["ok"] else "✗"
+                        emit("log", {"msg": f"  {status} Site '{sr['site']}' → '{sr['target_site']}': {sr['ap_count']} APs"})
+                    for ss in result.get("skipped_sites", []):
+                        emit("log", {"msg": f"  – Site '{ss}' skipped (no mapping)"})
+
+            emit("done", {"n_ok": n_ok, "n_fail": n_fail, "total": total})
+        except Exception as exc:
+            import traceback
+            emit("error", {"msg": str(exc), "traceback": traceback.format_exc()})
+        finally:
+            q.put(None)
+
+    threading.Thread(target=_run, daemon=True).start()
+    return jsonify({"ok": True, "op_id": op_id})
+
+
+@app.route("/api/import/classic-central/progress/<op_id>")
+def cc_import_progress(op_id):
+    return Response(
+        stream_with_context(_sse_stream(op_id)),
+        mimetype="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
 
 

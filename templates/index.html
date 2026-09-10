@@ -679,7 +679,12 @@
     <!-- Import sidebar -->
     <div id="sidebar-import" style="display:none">
       <div class="sidebar-section">
-        <div class="sidebar-label">New Central Instance</div>
+        <div class="sidebar-label">Destination Type</div>
+        <div class="tt-toggle" style="margin-bottom:16px">
+          <button class="tt-btn active" id="imp-dest-nc" onclick="setImportDest('nc')">New Central</button>
+          <button class="tt-btn"        id="imp-dest-cc" onclick="setImportDest('cc')">Classic Central</button>
+        </div>
+        <div class="sidebar-label" id="imp-dest-label">New Central Instance</div>
         <div class="field">
           <label>Base URL</label>
           <input id="imp-url" type="url" list="central-gw-urls" placeholder="https://apigw-prod2.central..."
@@ -689,13 +694,19 @@
           <label>Access Token</label>
           <input id="imp-token" type="password" placeholder="Bearer token"
                  oninput="saveSession('imp')" />
-          <div class="field-hint">New Central target token. Must have Admin role.</div>
+          <div class="field-hint" id="imp-token-hint">New Central target token. Must have Admin role.</div>
         </div>
-        <button class="btn btn-primary btn-block mt8" onclick="connectNC()">⟳ Connect to Destination Central</button>
+        <button class="btn btn-primary btn-block mt8" id="imp-connect-nc-btn" onclick="connectNC()">⟳ Connect to Destination Central</button>
+        <button class="btn btn-primary btn-block mt8" id="imp-connect-cc-btn" onclick="connectCC()" style="display:none">⟳ Connect to Classic Central</button>
         <div class="error-banner" id="imp-nc-error-banner"></div>
         <div class="nc-connected-bar" id="imp-nc-status">
           <div class="nc-dot"></div>
           <span id="imp-nc-status-text">0 sites loaded</span>
+        </div>
+        <div class="error-banner" id="imp-cc-error-banner" style="display:none"></div>
+        <div class="nc-connected-bar" id="imp-cc-status" style="display:none">
+          <div class="nc-dot"></div>
+          <span id="imp-cc-status-text">0 groups · 0 sites loaded</span>
         </div>
         <button class="btn btn-outline btn-block mt8" onclick="loadManifest()">⬡ Load Export from Disk</button>
         <div class="error-banner" id="imp-error-banner"></div>
@@ -726,7 +737,8 @@
         <div class="empty"><div class="empty-icon">⬡</div>Load an export to preview groups</div>
       </div>
       <div class="sidebar-section" id="imp-run-section" style="display:none">
-        <button class="btn btn-primary btn-block" id="imp-run-btn" onclick="runImport()">↑ Migrate APs to New Central</button>
+        <button class="btn btn-primary btn-block" id="imp-run-nc-btn" onclick="runImport()">↑ Migrate APs to New Central</button>
+        <button class="btn btn-primary btn-block" id="imp-run-cc-btn" onclick="runImportCC()" style="display:none">↑ Import to Classic Central</button>
         <label style="display:flex;align-items:center;gap:7px;margin-top:10px;cursor:pointer;font-family:var(--mono);font-size:10px;color:var(--muted);user-select:none">
           <input type="checkbox" id="imp-verbose-chk" style="accent-color:var(--blue);cursor:pointer">
           Verbose logging
@@ -867,7 +879,7 @@
       <div class="panel-body">
         <div class="empty" id="imp-empty">
           <div class="empty-icon">⬡</div>
-          Load an export manifest from disk,<br>select groups, then assign APs to matching New Central sites.
+          <span id="imp-empty-text">Load an export manifest from disk,<br>select groups, then assign APs to matching New Central sites.</span>
         </div>
         <div class="sample-warning-banner" id="imp-sample-warning">
           <span class="sample-badge">TEST</span>
@@ -884,6 +896,22 @@
         <div class="hidden" id="imp-mapping-section">
           <div class="section-heading" style="margin-top:20px">Site Mapping</div>
           <div id="imp-mapping-content"></div>
+        </div>
+        <!-- Classic Central: group mapping (exported group → target CC group) -->
+        <div class="hidden" id="imp-cc-group-mapping-section">
+          <div class="section-heading" style="margin-top:20px">Group Mapping</div>
+          <p style="font-family:var(--mono);font-size:11px;color:var(--muted);margin-bottom:12px">
+            Map each exported group to a group in the target Classic Central. Groups are auto-matched by name.
+          </p>
+          <div id="imp-cc-group-mapping-content"></div>
+        </div>
+        <!-- Classic Central: site mapping (source site name → target CC site name) -->
+        <div class="hidden" id="imp-cc-site-mapping-section">
+          <div class="section-heading" style="margin-top:20px">Site Mapping</div>
+          <p style="font-family:var(--mono);font-size:11px;color:var(--muted);margin-bottom:12px">
+            Map each site name from the export to a site in the target Classic Central. Leave unmapped to skip site assignment for those APs.
+          </p>
+          <div id="imp-cc-site-mapping-content"></div>
         </div>
         <div class="hidden" id="imp-dg-section">
           <div class="section-heading" style="margin-top:20px">Device Group Assignment</div>
@@ -1171,10 +1199,17 @@ let allLabels      = [];   // ["Production", "Branch", ...]
 let labelAssignments = {}; // {"GroupA": ["Production"], ...}
 let impLabelFilter  = new Set(); // active filter chips in Import sidebar
 let dataLabelFilter = new Set(); // active filter chips in Data sidebar
-// Site mapping state — Import tab
+// Destination type — Import tab
+let importDestType = 'nc';   // 'nc' = New Central, 'cc' = Classic Central
+// Site mapping state — Import tab (New Central)
 let ncSites      = [];   // [{site_id, site_name}, ...] from New Central
 let siteMappings = {};   // {group_name: site_id} — current group→site assignments
 let autoMatched  = new Set(); // group names whose mapping was set by exact-name match
+// Classic Central import state
+let ccGroups       = [];  // group names available in target CC
+let ccSites        = [];  // site names available in target CC
+let ccGroupMapping = {};  // {exportGroupName: targetCCGroupName}
+let ccSiteMapping  = {};  // {sourceSiteName: targetCCSiteName}
 // AP selection state — Import tab
 let apData              = {};          // {group_name: [{serial,name,model,ip,settings}]}
 let apSelections        = {};          // {group_name: Set<serial>} — selected APs per group
@@ -1455,6 +1490,290 @@ async function loadManifest() {
     setStatus('connected', `Manifest loaded — ${impGroups.length} groups`);
     if (ncSites.length) autoMatchSites();
   } catch(e) { setStatus('error', e.message); alert('Failed: ' + e.message); }
+}
+
+// ── Import destination toggle ────────────────────────────────────────────────
+function setImportDest(type) {
+  importDestType = type;
+  const isCC = type === 'cc';
+
+  document.getElementById('imp-dest-nc').classList.toggle('active', !isCC);
+  document.getElementById('imp-dest-cc').classList.toggle('active',  isCC);
+
+  document.getElementById('imp-dest-label').textContent   = isCC ? 'Classic Central Instance' : 'New Central Instance';
+  document.getElementById('imp-token-hint').textContent   = isCC
+    ? 'Classic Central target token. Must have Admin role.'
+    : 'New Central target token. Must have Admin role.';
+
+  document.getElementById('imp-connect-nc-btn').style.display = isCC ? 'none' : '';
+  document.getElementById('imp-connect-cc-btn').style.display = isCC ? '' : 'none';
+
+  document.getElementById('imp-nc-error-banner').style.display = isCC ? 'none' : '';
+  document.getElementById('imp-nc-status').style.display       = isCC ? 'none' : '';
+  document.getElementById('imp-cc-error-banner').style.display = isCC ? '' : 'none';
+  document.getElementById('imp-cc-status').style.display       = isCC ? '' : 'none';
+
+  document.getElementById('imp-run-nc-btn').style.display = isCC ? 'none' : '';
+  document.getElementById('imp-run-cc-btn').style.display = isCC ? '' : 'none';
+
+  const emptyText = document.getElementById('imp-empty-text');
+  if (emptyText) emptyText.innerHTML = isCC
+    ? 'Load an export manifest from disk,<br>select groups, then assign APs to Classic Central groups and sites.'
+    : 'Load an export manifest from disk,<br>select groups, then assign APs to matching New Central sites.';
+
+  // Toggle which mapping panels are visible (only after content is shown)
+  const ncMap  = document.getElementById('imp-mapping-section');
+  const ccGrp  = document.getElementById('imp-cc-group-mapping-section');
+  const ccSite = document.getElementById('imp-cc-site-mapping-section');
+  const dgSec  = document.getElementById('imp-dg-section');
+  if (!ncMap.classList.contains('hidden')) {
+    ncMap.classList.toggle('hidden', isCC);
+    ccGrp.classList.toggle('hidden', !isCC);
+    ccSite.classList.toggle('hidden', !isCC || !ccSites.length);
+  }
+  if (dgSec && !dgSec.classList.contains('hidden')) {
+    dgSec.classList.toggle('hidden', isCC);
+  }
+
+  if (isCC && ccGroups.length) renderCCGroupMapping();
+}
+
+// ── Classic Central connect ───────────────────────────────────────────────────
+async function connectCC() {
+  const url   = document.getElementById('imp-url').value.trim();
+  const token = document.getElementById('imp-token').value.trim();
+  const errBanner = document.getElementById('imp-cc-error-banner');
+  const status    = document.getElementById('imp-cc-status');
+  const statusTxt = document.getElementById('imp-cc-status-text');
+
+  errBanner.textContent = '';
+  errBanner.style.display = '';
+  status.style.display = 'none';
+
+  if (!url || !token) { errBanner.textContent = 'Base URL and token are required.'; return; }
+
+  const btn = document.getElementById('imp-connect-cc-btn');
+  btn.disabled = true; btn.textContent = '⟳ Connecting…';
+
+  try {
+    const r = await fetch('/api/import/classic-central/connect', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({base_url: url, token})
+    }).then(r => r.json());
+
+    if (!r.ok) { errBanner.textContent = r.error || 'Connection failed'; return; }
+
+    ccGroups = r.groups || [];
+    ccSites  = r.sites  || [];
+    statusTxt.textContent = `${ccGroups.length} groups · ${ccSites.length} sites loaded`;
+    status.style.display = '';
+    errBanner.textContent = '';
+
+    // Auto-match group mappings by name
+    ccGroupMapping = {};
+    for (const g of impGroups) {
+      if (ccGroups.includes(g.name)) ccGroupMapping[g.name] = g.name;
+    }
+    renderCCGroupMapping();
+    renderCCSiteMapping();
+  } catch(e) {
+    errBanner.textContent = 'Error: ' + e.message;
+  } finally {
+    btn.disabled = false; btn.textContent = '⟳ Connect to Classic Central';
+  }
+}
+
+// ── CC Group mapping render ───────────────────────────────────────────────────
+function renderCCGroupMapping() {
+  const section = document.getElementById('imp-cc-group-mapping-section');
+  const content = document.getElementById('imp-cc-group-mapping-content');
+  if (!section || !content) return;
+
+  const selected = impGroups.filter(g => impSelected.has(g.name));
+  if (!selected.length) {
+    section.classList.add('hidden');
+    return;
+  }
+  section.classList.remove('hidden');
+
+  const opts = ['<option value="">— not mapped —</option>',
+    ...ccGroups.map(g => `<option value="${_escHtml(g)}">${_escHtml(g)}</option>`)
+  ].join('');
+
+  content.innerHTML = selected.map(g => {
+    const mapped    = ccGroupMapping[g.name] || '';
+    const autoMatch = ccGroups.includes(g.name) && mapped === g.name;
+    return `<div class="mapping-row">
+      <div class="mapping-row-main">
+        <span style="font-family:var(--mono);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${_escHtml(g.name)}">${_escHtml(g.name)}</span>
+        <span style="color:var(--muted);font-size:16px">→</span>
+        <select style="font-family:var(--mono);font-size:11px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);padding:4px 6px;width:100%"
+                onchange="ccGroupMapping['${_escHtml(g.name)}']=this.value;renderCCSiteMapping()">${opts.replace(`value="${_escHtml(mapped)}"`,`value="${_escHtml(mapped)}" selected`)}</select>
+        ${autoMatch ? '<span class="auto-badge">auto</span>' : ''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ── CC Site mapping render ────────────────────────────────────────────────────
+function _collectCCSites() {
+  const sites = new Set();
+  for (const name of impSelected) {
+    const aps = apData[name] || [];
+    for (const ap of aps) { if (ap.site) sites.add(ap.site); }
+    // Also read from pre-loaded inventory if AP data not yet expanded
+    const inv = (window._ccInventoryCache || {})[name] || [];
+    for (const ap of inv) { if (ap.site) sites.add(ap.site); }
+  }
+  return [...sites].sort();
+}
+
+function renderCCSiteMapping() {
+  const section = document.getElementById('imp-cc-site-mapping-section');
+  const content = document.getElementById('imp-cc-site-mapping-content');
+  if (!section || !content) return;
+
+  const sites = _collectCCSites();
+  if (!sites.length || !ccSites.length) {
+    section.classList.add('hidden');
+    return;
+  }
+  section.classList.remove('hidden');
+
+  const opts = ['<option value="">— skip site assignment —</option>',
+    ...ccSites.map(s => `<option value="${_escHtml(s)}">${_escHtml(s)}</option>`)
+  ].join('');
+
+  content.innerHTML = sites.map(src => {
+    const mapped    = ccSiteMapping[src] || (ccSites.includes(src) ? src : '');
+    if (!ccSiteMapping[src] && ccSites.includes(src)) ccSiteMapping[src] = src;
+    return `<div class="mapping-row">
+      <div class="mapping-row-main">
+        <span style="font-family:var(--mono);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${_escHtml(src)}">${_escHtml(src)}</span>
+        <span style="color:var(--muted);font-size:16px">→</span>
+        <select style="font-family:var(--mono);font-size:11px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);padding:4px 6px;width:100%"
+                onchange="ccSiteMapping['${_escHtml(src)}']=this.value">${opts.replace(`value="${_escHtml(mapped)}"`,`value="${_escHtml(mapped)}" selected`)}</select>
+        ${mapped && mapped === src ? '<span class="auto-badge">auto</span>' : ''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// Pre-fetch inventory for CC site mapping when groups are selected
+async function _preFetchCCInventory(groupName) {
+  if (!window._ccInventoryCache) window._ccInventoryCache = {};
+  if (window._ccInventoryCache[groupName]) return;
+  try {
+    const r = await fetch(`/api/groups/${encodeURIComponent(groupName)}`).then(r=>r.json());
+    window._ccInventoryCache[groupName] = (r.ap_inventory || []).filter(a => a.site);
+    if (importDestType === 'cc' && ccSites.length) renderCCSiteMapping();
+  } catch(_) {}
+}
+
+// ── CC Import run ─────────────────────────────────────────────────────────────
+async function runImportCC() {
+  const url   = document.getElementById('imp-url').value.trim();
+  const token = document.getElementById('imp-token').value.trim();
+  if (!url || !token) { alert('Enter Base URL and token for the target Classic Central.'); return; }
+
+  const selected = impGroups.filter(g => impSelected.has(g.name));
+  if (!selected.length) { alert('No groups selected.'); return; }
+
+  // Validate group mappings
+  const unmapped = selected.filter(g => !ccGroupMapping[g.name]);
+  if (unmapped.length) {
+    alert(`${unmapped.length} group(s) have no target group mapped:\n${unmapped.map(g=>g.name).join('\n')}`);
+    return;
+  }
+
+  const verbose = document.getElementById('imp-verbose-chk')?.checked ?? false;
+  const mappings = selected.map(g => ({
+    export_group: g.name,
+    target_group: ccGroupMapping[g.name],
+    site_mapping: {...ccSiteMapping},
+    serials: apSelections[g.name] ? [...apSelections[g.name]] : null,
+  }));
+
+  // Show progress UI
+  document.getElementById('imp-empty').classList.add('hidden');
+  document.getElementById('imp-cc-group-mapping-section').classList.add('hidden');
+  document.getElementById('imp-cc-site-mapping-section').classList.add('hidden');
+  const strip = document.getElementById('imp-progress-strip');
+  strip.classList.remove('hidden');
+  document.getElementById('imp-clear-btn').classList.remove('hidden');
+  document.getElementById('imp-results').classList.remove('hidden');
+  document.getElementById('imp-n-ok').textContent = '0';
+  document.getElementById('imp-n-skip').textContent = '0';
+  document.getElementById('imp-n-fail').textContent = '0';
+  document.getElementById('imp-cards').innerHTML = '';
+
+  let r;
+  try {
+    r = await fetch('/api/import/classic-central', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({base_url: url, token, mappings, verbose})
+    }).then(r => r.json());
+  } catch(e) { alert('Failed to start import: ' + e.message); return; }
+
+  if (!r.ok) { alert('Error: ' + (r.error || 'Unknown')); return; }
+
+  const evtSrc = new EventSource(`/api/import/classic-central/progress/${r.op_id}`);
+  let nOk = 0, nFail = 0, total = 0;
+
+  evtSrc.onmessage = evt => {
+    const d = JSON.parse(evt.data);
+    if (d.type === 'start') {
+      total = d.total;
+      document.getElementById('imp-prog-label').textContent = 'Importing…';
+    } else if (d.type === 'result') {
+      const res = d.result;
+      if (res.overall_ok) nOk++; else nFail++;
+      document.getElementById('imp-n-ok').textContent   = nOk;
+      document.getElementById('imp-n-fail').textContent = nFail;
+      const pct = total ? Math.round((d.done / total) * 100) : 0;
+      document.getElementById('imp-prog-fill').style.width = pct + '%';
+      document.getElementById('imp-prog-pct').textContent  = pct + '%';
+      // Render result card
+      const card = document.createElement('div');
+      card.className = 'result-card';
+      const siteRows = (res.site_results || []).map(sr =>
+        `<div style="padding:3px 0;font-size:11px;color:${sr.ok?'var(--green)':'var(--red)'}">
+          ${sr.ok?'✓':'✗'} ${_escHtml(sr.site)} → ${_escHtml(sr.target_site)} (${sr.ap_count} APs${sr.failed?.length?'; '+sr.failed.length+' failed':''})
+        </div>`).join('');
+      const skipRows = (res.skipped_sites || []).map(s =>
+        `<div style="padding:3px 0;font-size:11px;color:var(--muted)">– ${_escHtml(s)} (no site mapping)</div>`).join('');
+      card.innerHTML = `
+        <details>
+          <summary style="cursor:pointer;font-family:var(--mono);font-size:12px;padding:10px 14px;list-style:none;display:flex;align-items:center;gap:8px">
+            <span style="color:${res.overall_ok?'var(--green)':'var(--red)'}">●</span>
+            <strong>${_escHtml(res.group)}</strong>
+            <span style="color:var(--muted)">→ ${_escHtml(res.target_group)}</span>
+            <span style="margin-left:auto;color:var(--muted);font-size:11px">${res.ap_count} APs</span>
+          </summary>
+          <div style="padding:8px 14px 12px;border-top:1px solid var(--border)">
+            <div style="padding:3px 0;font-size:11px;color:${res.group_ok?'var(--green)':'var(--red)'}">
+              ${res.group_ok?'✓':'✗'} Group assignment${res.group_failed?.length?' ('+res.group_failed.length+' failed)':''}
+            </div>
+            ${siteRows}${skipRows}
+          </div>
+        </details>`;
+      document.getElementById('imp-cards').appendChild(card);
+    } else if (d.type === 'log') {
+      const log = document.getElementById('imp-log');
+      if (log) { log.textContent += d.msg + '\n'; log.scrollTop = log.scrollHeight; }
+    } else if (d.type === 'done') {
+      document.getElementById('imp-prog-label').textContent = 'Complete';
+      document.getElementById('imp-prog-fill').style.width = '100%';
+      document.getElementById('imp-prog-pct').textContent  = '100%';
+      evtSrc.close();
+    } else if (d.type === 'error') {
+      document.getElementById('imp-prog-label').textContent = 'Error';
+      evtSrc.close();
+    }
+  };
+  evtSrc.onerror = () => evtSrc.close();
 }
 
 async function connectNC() {
@@ -1947,8 +2266,15 @@ function renderImpGroups() {
     && impSelected.has(sampleConfig.name);
   document.getElementById('imp-sample-warning').classList.toggle('visible', !!hasSampleSelected);
   renderImportReport();
-  renderSiteMapping();
-  renderDeviceGroupConfig();
+  if (importDestType === 'cc') {
+    renderCCGroupMapping();
+    renderCCSiteMapping();
+    // Pre-fetch inventory for site discovery
+    for (const name of impSelected) _preFetchCCInventory(name);
+  } else {
+    renderSiteMapping();
+    renderDeviceGroupConfig();
+  }
 }
 function toggleImp(n){impSelected.has(n)?impSelected.delete(n):impSelected.add(n);renderImpGroups();}
 function selectAllImp(v) {

@@ -36,6 +36,7 @@ COPY app.py                 .
 COPY exporters.py           .
 COPY new_central_importer.py .
 COPY classic_restorer.py    .
+COPY classic_importer.py    .
 COPY templates/             templates/
 COPY entrypoint.sh          /entrypoint.sh
 
