@@ -704,7 +704,7 @@
           <span id="imp-nc-status-text">0 sites loaded</span>
         </div>
         <div class="error-banner" id="imp-cc-error-banner" style="display:none"></div>
-        <div class="nc-connected-bar" id="imp-cc-status" style="display:none">
+        <div class="nc-connected-bar" id="imp-cc-status">
           <div class="nc-dot"></div>
           <span id="imp-cc-status-text">0 groups · 0 sites loaded</span>
         </div>
@@ -1509,9 +1509,10 @@ function setImportDest(type) {
   document.getElementById('imp-connect-cc-btn').style.display = isCC ? '' : 'none';
 
   document.getElementById('imp-nc-error-banner').style.display = isCC ? 'none' : '';
-  document.getElementById('imp-nc-status').style.display       = isCC ? 'none' : '';
   document.getElementById('imp-cc-error-banner').style.display = isCC ? '' : 'none';
-  document.getElementById('imp-cc-status').style.display       = isCC ? '' : 'none';
+  // Status bars use the .visible class (CSS controls display:flex vs none)
+  if (isCC) document.getElementById('imp-nc-status').classList.remove('visible');
+  else      document.getElementById('imp-cc-status').classList.remove('visible');
 
   document.getElementById('imp-run-nc-btn').style.display = isCC ? 'none' : '';
   document.getElementById('imp-run-cc-btn').style.display = isCC ? '' : 'none';
@@ -1547,8 +1548,7 @@ async function connectCC() {
   const statusTxt = document.getElementById('imp-cc-status-text');
 
   errBanner.textContent = '';
-  errBanner.style.display = '';
-  status.style.display = 'none';
+  status.classList.remove('visible');
 
   if (!url || !token) { errBanner.textContent = 'Base URL and token are required.'; return; }
 
@@ -1566,8 +1566,8 @@ async function connectCC() {
 
     ccGroups = r.groups || [];
     ccSites  = r.sites  || [];
-    statusTxt.textContent = `${ccGroups.length} groups · ${ccSites.length} sites loaded`;
-    status.style.display = '';
+    statusTxt.textContent = `Connected — ${ccGroups.length} groups · ${ccSites.length} sites`;
+    status.classList.add('visible');
     errBanner.textContent = '';
 
     // Auto-match group mappings by name
