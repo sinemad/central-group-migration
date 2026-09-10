@@ -21,6 +21,11 @@ LABEL org.opencontainers.image.title="central-group-migration" \
 RUN groupadd --gid 1001 central && \
     useradd  --uid 1001 --gid central --shell /bin/bash --create-home central
 
+# gosu: minimal setuid helper used by entrypoint.sh to drop from root to
+# the 'central' user after fixing bind-mount ownership at startup.
+RUN apt-get update && apt-get install -y --no-install-recommends gosu \
+    && rm -rf /var/lib/apt/lists/*
+
 # Copy installed packages from builder
 COPY --from=builder /install /usr/local
 
@@ -32,13 +37,17 @@ COPY exporters.py           .
 COPY new_central_importer.py .
 COPY classic_restorer.py    .
 COPY templates/             templates/
+COPY entrypoint.sh          /entrypoint.sh
 
-# The exports directory is mounted as a volume at runtime.
-# Create it here so the directory exists even without a mount,
-# and ensure the non-root user owns it.
-RUN mkdir -p /app/exports && chown -R central:central /app
+# The exports/backups directories are created here so they exist even
+# without a bind mount. Ownership is also fixed at startup by entrypoint.sh
+# to handle the common Linux case where Docker creates them as root.
+RUN mkdir -p /app/exports /app/backups \
+    && chown -R central:central /app \
+    && chmod +x /entrypoint.sh
 
-USER central
+# Container starts as root so entrypoint.sh can fix bind-mount ownership,
+# then drops to 'central' (uid 1001) via gosu before exec-ing gunicorn.
 
 # gunicorn config:
 #   -w 1              Single worker — _progress_queues is in-process state
@@ -56,4 +65,6 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"
 
-CMD ["gunicorn", "app:app"]
+# entrypoint.sh runs as root, fixes bind-mount ownership, then execs
+# gunicorn as the 'central' user via gosu.
+ENTRYPOINT ["/entrypoint.sh"]

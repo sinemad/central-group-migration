@@ -24,10 +24,37 @@ from classic_restorer import get_classic_sites, validate_dr_target, restore_grou
 app = Flask(__name__)
 CORS(app)
 
-EXPORT_DIR = os.path.join(os.path.dirname(__file__), "exports")
+_APP_DIR = os.path.dirname(os.path.abspath(__file__))
+_APP_CONFIG_FILE = os.path.join(_APP_DIR, "app_config.json")
+
+
+def _load_app_config() -> dict:
+    try:
+        with open(_APP_CONFIG_FILE) as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def _save_app_config(cfg: dict):
+    with open(_APP_CONFIG_FILE, "w") as f:
+        json.dump(cfg, f, indent=2)
+
+
+# Priority: environment variable > persisted config file > default
+_cfg = _load_app_config()
+EXPORT_DIR: str = (
+    os.environ.get("EXPORT_DIR")
+    or _cfg.get("export_dir")
+    or os.path.join(_APP_DIR, "exports")
+)
 os.makedirs(EXPORT_DIR, exist_ok=True)
 
-BACKUP_DIR = os.environ.get("BACKUP_DIR", os.path.join(os.path.dirname(__file__), "backups"))
+BACKUP_DIR: str = (
+    os.environ.get("BACKUP_DIR")
+    or _cfg.get("backup_dir")
+    or os.path.join(_APP_DIR, "backups")
+)
 os.makedirs(BACKUP_DIR, exist_ok=True)
 
 _progress_queues: dict[str, queue.Queue] = {}
@@ -1149,7 +1176,8 @@ if __name__ == "__main__":
 # Sample export — testing fixture
 # ---------------------------------------------------------------------------
 
-SAMPLE_CONFIG_FILE = os.path.join(EXPORT_DIR, ".sample_config.json")
+def _sample_config_file() -> str:
+    return os.path.join(EXPORT_DIR, ".sample_config.json")
 
 _SAMPLE_DEFAULTS = {
     "enabled": False,
@@ -1161,9 +1189,9 @@ _SAMPLE_DEFAULTS = {
 
 
 def _read_sample_config() -> dict:
-    if not os.path.exists(SAMPLE_CONFIG_FILE):
+    if not os.path.exists(_sample_config_file()):
         return dict(_SAMPLE_DEFAULTS)
-    with open(SAMPLE_CONFIG_FILE) as f:
+    with open(_sample_config_file()) as f:
         return json.load(f)
 
 
@@ -1251,7 +1279,7 @@ def save_sample():
     _write_sample_files(name, clean_aps)
 
     config = {"enabled": enabled, "name": name, "aps": clean_aps}
-    with open(SAMPLE_CONFIG_FILE, "w") as f:
+    with open(_sample_config_file(), "w") as f:
         json.dump(config, f, indent=2)
 
     return jsonify({"ok": True, **config})
@@ -1528,18 +1556,20 @@ def debug_group(group_name):
                         "traceback": traceback.format_exc()}), 500
 
 
-LABELS_FILE = os.path.join(EXPORT_DIR, "labels.json")
+def _labels_file() -> str:
+    return os.path.join(EXPORT_DIR, "labels.json")
 
 
 def _read_labels() -> dict:
-    if not os.path.exists(LABELS_FILE):
+    p = _labels_file()
+    if not os.path.exists(p):
         return {"definitions": [], "assignments": {}}
-    with open(LABELS_FILE) as f:
+    with open(p) as f:
         return json.load(f)
 
 
 def _write_labels(data: dict):
-    with open(LABELS_FILE, "w") as f:
+    with open(_labels_file(), "w") as f:
         json.dump(data, f, indent=2)
 
 
@@ -1922,4 +1952,46 @@ def dr_progress(op_id):
 @app.route("/health")
 def health():
     return jsonify({"ok": True}), 200
+
+
+# ---------------------------------------------------------------------------
+# App configuration — export directory
+# ---------------------------------------------------------------------------
+
+@app.route("/api/config")
+def get_config():
+    return jsonify({
+        "ok": True,
+        "export_dir": EXPORT_DIR,
+        "backup_dir": BACKUP_DIR,
+    })
+
+
+@app.route("/api/config", methods=["POST"])
+def set_config():
+    global EXPORT_DIR
+    data = request.get_json() or {}
+    new_dir = (data.get("export_dir") or "").strip()
+    if not new_dir:
+        return jsonify({"ok": False, "error": "export_dir is required"}), 400
+
+    new_dir = os.path.expanduser(new_dir)   # expand ~ on the server
+    new_dir = os.path.abspath(new_dir)
+
+    try:
+        os.makedirs(new_dir, exist_ok=True)
+        # Verify write access
+        probe = os.path.join(new_dir, ".write_probe")
+        with open(probe, "w") as f:
+            f.write("ok")
+        os.remove(probe)
+    except OSError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+
+    EXPORT_DIR = new_dir
+    cfg = _load_app_config()
+    cfg["export_dir"] = new_dir
+    _save_app_config(cfg)
+
+    return jsonify({"ok": True, "export_dir": EXPORT_DIR})
 

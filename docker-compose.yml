@@ -8,17 +8,21 @@ services:
     ports:
       - "${HOST_PORT:-8000}:8000"
     volumes:
-      # Persist exported group data across container restarts/upgrades.
-      # Bind-mount a local directory so exports are accessible on the host
-      # for inspection, git commits, or copying to another machine.
+      # Default export location. To use a different host path, change the
+      # left side and set EXPORT_DIR below to match the container-side path.
+      # Example: - /home/user/central-exports:/data/central-exports
       - ./exports:/app/exports
-      # Persist compressed backups. Set BACKUP_DIR env var to use a different
-      # path inside the container (e.g. a NAS mount or separate volume).
+      # Persist compressed backups.
       - ./backups:/app/backups
     restart: unless-stopped
     environment:
       # Optional: override gunicorn args without rebuilding the image
       - GUNICORN_CMD_ARGS=--bind=0.0.0.0:8000 --workers=1 --threads=8 --timeout=120 --keep-alive=5 --access-logfile=- --error-logfile=-
+      # Export directory inside the container. Must match the right side of the
+      # volume mount above. Uncomment and adjust if using a custom mount path.
+      # - EXPORT_DIR=/data/central-exports
+      # Backup directory inside the container.
+      # - BACKUP_DIR=/data/central-backups
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 30s

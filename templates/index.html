@@ -73,6 +73,41 @@
     gap: 6px; transition: all var(--transition); white-space: nowrap;
   }
   .theme-toggle:hover { color: var(--text); border-color: var(--amber); }
+  .settings-btn {
+    background: none; border: 1px solid var(--border); border-radius: var(--radius);
+    color: var(--muted); cursor: pointer; font-size: 14px; padding: 4px 9px;
+    display: flex; align-items: center; transition: all var(--transition); line-height: 1;
+  }
+  .settings-btn:hover { color: var(--text); border-color: var(--amber); }
+  /* ── Settings modal ── */
+  .modal-overlay {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+    z-index: 200; align-items: center; justify-content: center;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
+    padding: 28px 32px; width: 520px; max-width: 95vw;
+    box-shadow: 0 16px 48px rgba(0,0,0,0.3);
+  }
+  .modal-title {
+    font-family: var(--mono); font-size: 12px; text-transform: uppercase;
+    letter-spacing: 0.12em; color: var(--text-hi); margin-bottom: 20px; font-weight: 600;
+  }
+  .modal-field { margin-bottom: 16px; }
+  .modal-field label { display: block; font-family: var(--mono); font-size: 10px;
+    text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); margin-bottom: 6px; }
+  .modal-field input {
+    width: 100%; background: var(--bg); border: 1px solid var(--border);
+    border-radius: var(--radius); color: var(--text-hi); font-family: var(--mono);
+    font-size: 12px; padding: 8px 10px; outline: none; transition: border-color var(--transition);
+  }
+  .modal-field input:focus { border-color: var(--amber); }
+  .modal-hint { font-family: var(--mono); font-size: 10px; color: var(--muted); margin-top: 5px; }
+  .modal-footer { display: flex; gap: 10px; justify-content: flex-end; margin-top: 24px; }
+  .modal-status { font-family: var(--mono); font-size: 11px; margin-top: 12px; min-height: 18px; }
+  .modal-status.ok  { color: var(--green); }
+  .modal-status.err { color: var(--red); }
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   body {
     background: var(--bg); color: var(--text); font-family: var(--sans);
@@ -565,7 +600,25 @@
   <div class="logo">Central</div>
   <div class="header-badge">Group Migration</div>
   <button class="theme-toggle" id="theme-toggle" onclick="toggleTheme()" title="Toggle light / dark mode"></button>
+  <button class="settings-btn" onclick="openSettings()" title="Settings">⚙</button>
 </header>
+
+<!-- Settings modal -->
+<div class="modal-overlay" id="settings-modal" onclick="if(event.target===this)closeSettings()">
+  <div class="modal">
+    <div class="modal-title">⚙ Settings</div>
+    <div class="modal-field">
+      <label>Export Directory</label>
+      <input id="settings-export-dir" type="text" placeholder="/path/to/exports" spellcheck="false">
+      <div class="modal-hint">Absolute path on the server where exported group data is stored. Supports ~ expansion.</div>
+    </div>
+    <div class="modal-status" id="settings-status"></div>
+    <div class="modal-footer">
+      <button class="btn btn-outline btn-sm" onclick="closeSettings()">Cancel</button>
+      <button class="btn btn-primary btn-sm" onclick="saveSettings()">Apply</button>
+    </div>
+  </div>
+</div>
 
 <main>
   <nav class="workflow-nav">
@@ -1009,6 +1062,54 @@ function toggleTheme() {
   updateThemeIcon();
 }
 /* ── End theme ──────────────────────────────────────────────────────── */
+
+/* ── Settings modal ─────────────────────────────────────────────────── */
+async function openSettings() {
+  const modal = document.getElementById('settings-modal');
+  const inp   = document.getElementById('settings-export-dir');
+  const stat  = document.getElementById('settings-status');
+  stat.textContent = '';
+  stat.className = 'modal-status';
+  inp.value = '';
+  modal.classList.add('open');
+  try {
+    const r = await fetch('/api/config').then(r => r.json());
+    if (r.ok) inp.value = r.export_dir;
+  } catch(_) {}
+}
+function closeSettings() {
+  document.getElementById('settings-modal').classList.remove('open');
+}
+async function saveSettings() {
+  const inp  = document.getElementById('settings-export-dir');
+  const stat = document.getElementById('settings-status');
+  const dir  = inp.value.trim();
+  if (!dir) { stat.textContent = 'Directory path required.'; stat.className = 'modal-status err'; return; }
+  stat.textContent = 'Applying…'; stat.className = 'modal-status';
+  try {
+    const r = await fetch('/api/config', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({export_dir: dir})
+    }).then(r => r.json());
+    if (r.ok) {
+      inp.value = r.export_dir;
+      stat.textContent = '✓ Saved — ' + r.export_dir;
+      stat.className = 'modal-status ok';
+      // Refresh any loaded data that depends on the export directory
+      loadDataGroups();
+      loadBackups();
+    } else {
+      stat.textContent = '✗ ' + (r.error || 'Unknown error');
+      stat.className = 'modal-status err';
+    }
+  } catch(e) {
+    stat.textContent = '✗ ' + e.message;
+    stat.className = 'modal-status err';
+  }
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSettings(); });
+/* ── End settings modal ─────────────────────────────────────────────── */
 
 /* ── Sidebar resize ─────────────────────────────────────────────────── */
 (function() {
