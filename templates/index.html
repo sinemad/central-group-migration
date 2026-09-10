@@ -86,9 +86,17 @@
   .logo { font-family: var(--mono); font-size: 13px; font-weight: 600; color: var(--amber); letter-spacing: 0.08em; text-transform: uppercase; }
   .logo span { color: var(--muted); font-weight: 400; }
   .header-badge { font-family: var(--mono); font-size: 10px; padding: 2px 8px; border: 1px solid var(--amber-dim); color: var(--amber); border-radius: 2px; text-transform: uppercase; letter-spacing: 0.1em; }
-  main { display: grid; grid-template-columns: 280px 1fr; grid-template-rows: auto 1fr; grid-template-areas: "nav nav" "aside content"; max-height: calc(100vh - 56px - 36px); overflow: hidden; }
+  main { display: grid; grid-template-columns: var(--sidebar-width, 280px) 1fr; grid-template-rows: auto 1fr; grid-template-areas: "nav nav" "aside content"; max-height: calc(100vh - 56px - 36px); overflow: hidden; }
   .workflow-nav { grid-area: nav; display: flex; align-items: stretch; border-bottom: 1px solid var(--border); background: var(--surface2); }
-  aside { grid-area: aside; border-right: 1px solid var(--border); background: var(--surface); overflow-y: auto; display: flex; flex-direction: column; }
+  aside { grid-area: aside; border-right: 1px solid var(--border); background: var(--surface); overflow-y: auto; display: flex; flex-direction: column; position: relative; min-width: 180px; max-width: 560px; }
+  .sidebar-resize-handle {
+    position: absolute; top: 0; right: -3px; width: 6px; height: 100%;
+    cursor: col-resize; z-index: 10;
+    background: transparent;
+    transition: background var(--transition);
+  }
+  .sidebar-resize-handle:hover,
+  .sidebar-resize-handle.dragging { background: var(--amber); opacity: 0.5; }
   .content { grid-area: content; }
   .sidebar-section { padding: 20px; border-bottom: 1px solid var(--border); }
   .sidebar-label { font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--muted); margin-bottom: 14px; }
@@ -571,6 +579,7 @@
     <button class="tab utility-tab" onclick="switchTab('dr')">Disaster Recovery</button>
   </nav>
   <aside>
+    <div class="sidebar-resize-handle" id="sidebar-resize-handle"></div>
 
     <!-- Export sidebar -->
     <div id="sidebar-export">
@@ -1000,6 +1009,51 @@ function toggleTheme() {
   updateThemeIcon();
 }
 /* ── End theme ──────────────────────────────────────────────────────── */
+
+/* ── Sidebar resize ─────────────────────────────────────────────────── */
+(function() {
+  const STORAGE_KEY = 'cgm_sidebar_width';
+  const MIN = 180, MAX = 560;
+
+  function applyWidth(px) {
+    document.documentElement.style.setProperty('--sidebar-width', px + 'px');
+  }
+
+  const saved = parseInt(localStorage.getItem(STORAGE_KEY), 10);
+  if (saved >= MIN && saved <= MAX) applyWidth(saved);
+
+  document.addEventListener('DOMContentLoaded', function() {
+    const handle = document.getElementById('sidebar-resize-handle');
+    if (!handle) return;
+    let startX, startW;
+
+    handle.addEventListener('mousedown', function(e) {
+      e.preventDefault();
+      startX = e.clientX;
+      startW = document.querySelector('aside').getBoundingClientRect().width;
+      handle.classList.add('dragging');
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+
+      function onMove(e) {
+        const w = Math.min(MAX, Math.max(MIN, startW + (e.clientX - startX)));
+        applyWidth(w);
+      }
+      function onUp() {
+        handle.classList.remove('dragging');
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+        const w = document.querySelector('aside').getBoundingClientRect().width;
+        localStorage.setItem(STORAGE_KEY, Math.round(w));
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+      }
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+  });
+})();
+/* ── End sidebar resize ─────────────────────────────────────────────── */
 
 let expGroups = [], impGroups = [], dataGroups = [], dataGroupsFiltered = [];
 // Disaster Recovery state
